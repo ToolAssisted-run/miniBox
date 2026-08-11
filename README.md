@@ -18,7 +18,7 @@ Derived from the BizHawk project's waterbox
 each under its own permissive license (BizHawk's waterbox - MIT; musl libc -
 MIT, Rich Felker et al.; libco - public domain, byuu; LLVM libc++ etc. -
 Apache-2.0 w/ LLVM exception, built not vendored). See LICENSE and
-ATTRIBUTION.md for the full component-by-component breakdown.
+docs/ATTRIBUTION.md for the full component-by-component breakdown.
 
 ## Layout
 
@@ -34,11 +34,12 @@ ATTRIBUTION.md for the full component-by-component breakdown.
   lives in the top-level `meson.build`; there is no separate build script.
 - `extern/` - external/vendored libraries: `musl` (the guest libc, vendored
   from nattthebear/musl @ 2063abc4 with one local fix baked in - see
-  ATTRIBUTION.md), `emulibc` (BizHawk's guest support lib: ECL_* macros,
+  docs/ATTRIBUTION.md), `emulibc` (BizHawk's guest support lib: ECL_* macros,
   sealed/invisible/plain allocators, `__wbxsysinfo`), `libco` (byuu's
   cothreads), `libcxx` (LLVM sysroot build scripts for C++ guests).
 - `tests/` - the test suite (host unit tests + guest system tests).
-- `docs/` - `MACHINE-SPEC.md` (the frozen machine contract) and debugging notes.
+- `docs/` - `MACHINE-SPEC.md` (the frozen machine contract), `ATTRIBUTION.md`
+  (the component-by-component license breakdown), and debugging notes.
 - `build/` - all build output (gitignored): `build/meson-linux` (which contains
   the meson-built guest toolchain under `guest-sysroot/`) and
   `build/meson-windows`.
