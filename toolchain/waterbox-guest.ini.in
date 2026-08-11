@@ -1,0 +1,30 @@
+# Meson cross-file for building a waterbox guest (.wbx) - generated from
+# waterbox-guest.ini.in with absolute toolchain paths filled in.
+#
+# Usage from a core project:
+#   meson setup build-guest --cross-file <builddir>/toolchain/waterbox-guest.ini
+#   # then in the core's meson.build:
+#   executable('core.wbx', 'core.c', link_args: ['@EMULIBC_OBJ@', '-lgcc'])
+#
+# The guest is a fake-machine target: static non-PIE ELF at a fixed base, its
+# syscalls are calls into the host. It is NOT runnable standalone.
+
+[binaries]
+c = '@MUSL_GCC@'
+ar = 'ar'
+strip = 'strip'
+
+[built-in options]
+c_args = ['-fvisibility=hidden', '-I@EMULIBC_INC@', '-Wall', '-mcmodel=large', '-mstack-protector-guard=global', '-fno-pic', '-fno-pie', '-fcf-protection=none', '-O2', '-DNDEBUG']
+c_link_args = ['-static', '-no-pie', '-Wl,--eh-frame-hdr,-O2', '-T', '@LINKSCRIPT@']
+
+[host_machine]
+system = 'linux'
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+endian = 'little'
+
+[properties]
+# Consumers link these into every guest executable.
+waterbox_emulibc_obj = '@EMULIBC_OBJ@'
+needs_exe_wrapper = true
