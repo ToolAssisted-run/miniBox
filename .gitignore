@@ -6,3 +6,4 @@ toolchain/*/obj/
 *.wbx.zst
 runtime-c/**/*.o
 runtime-c/test/test_memblock
+runtime-c/libminiboxhost.so

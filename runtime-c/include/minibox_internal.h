@@ -120,6 +120,60 @@ int mb_block_load_state(mb_block *b, mb_read_cb r, uintptr_t ud);
 void mb_tripguard_register(mb_block *b);
 void mb_tripguard_unregister(mb_block *b);
 
+/* ---- context.c: host<->guest transitions (interop.bin at 0x35f00000000) ---- */
+#define MB_ORG            0x35f00000000ull
+#define MB_CALLBACK_SLOTS 64
+/* Layout synced with runtime/src/context/interop.s (struc Context). */
+typedef uintptr_t (*mb_syscall_cb)(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4,
+                                   uintptr_t a5, uintptr_t a6, uintptr_t nr, void *host);
+typedef uintptr_t (*mb_external_callback)(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+typedef struct {
+	uintptr_t thread_area, host_rsp, guest_rsp, host_rsp_alt, guest_rsp_alt;
+	mb_syscall_cb dispatch_syscall;
+	uintptr_t host_ptr;
+	mb_external_callback extcall_slots[MB_CALLBACK_SLOTS];
+} mb_context;
+
+void      mb_context_init(mb_context *c, uintptr_t guest_rsp, uintptr_t guest_rsp_alt, mb_syscall_cb dispatch);
+void      mb_prepare_thread(void);              /* install gs base once per host thread */
+uintptr_t mb_call_guest_simple(uintptr_t entry, mb_context *c);
+uintptr_t mb_get_callback_ptr(uintptr_t slot); /* fixed extcall thunk address */
+
+/* thunk manager: RWX stubs wrapping guest entries with the stack-switch call-in */
+typedef struct mb_thunks mb_thunks;
+mb_thunks *mb_thunks_new(void);
+void       mb_thunks_free(mb_thunks *t);
+uintptr_t  mb_thunks_get(mb_thunks *t, uintptr_t guest_entry, mb_context *c);
+
+/* ---- elf.c ---- */
+typedef struct mb_elf mb_elf;
+/* parse+load the guest image into b; fills *out. Returns 0 on success. */
+int       mb_elf_load(const uint8_t *image, size_t image_len, const char *module_name,
+                      const mb_layout *layout, mb_block *b, mb_elf **out);
+void      mb_elf_free(mb_elf *e);
+uintptr_t mb_elf_entry(const mb_elf *e);
+uintptr_t mb_elf_proc_addr(const mb_elf *e, const char *name); /* 0 if absent */
+void      mb_elf_seal(mb_elf *e, mb_block *b);   /* mprotect RO sections */
+const uint8_t *mb_elf_hash(const mb_elf *e);     /* 32 bytes */
+mb_range  mb_elf_span(const uint8_t *image, size_t image_len); /* PT_LOAD span */
+
+/* ---- fs.c ---- */
+typedef struct mb_fs mb_fs;
+mb_fs *mb_fs_new(void);
+void   mb_fs_free(mb_fs *fs);
+int    mb_fs_mount(mb_fs *fs, const char *name, const uint8_t *data, size_t len, bool writable);
+int    mb_fs_unmount(mb_fs *fs, const char *name, uint8_t **out_data, size_t *out_len); /* caller frees */
+/* syscall-shaped ops: return value or -errno */
+long mb_fs_open(mb_fs *fs, const char *name, int flags);
+long mb_fs_close(mb_fs *fs, int fd);
+long mb_fs_read(mb_fs *fs, int fd, uint8_t *buf, size_t n);
+long mb_fs_write(mb_fs *fs, int fd, const uint8_t *buf, size_t n);
+long mb_fs_seek(mb_fs *fs, int fd, long offset, int whence);
+long mb_fs_stat_name(mb_fs *fs, const char *name, void *kstat);
+long mb_fs_stat_fd(mb_fs *fs, int fd, void *kstat);
+long mb_fs_truncate_name(mb_fs *fs, const char *name, long size);
+long mb_fs_truncate_fd(mb_fs *fs, int fd, long size);
+
 /* Internal helpers shared with tripguard (memblock.c). */
 mb_prot mb_page_native_prot(const mb_page *p);
 void    mb_page_maybe_snapshot(mb_page *p, uintptr_t mirror_addr);
