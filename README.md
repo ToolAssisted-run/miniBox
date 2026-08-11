@@ -24,7 +24,7 @@ ATTRIBUTION.md for the full component-by-component breakdown.
 
 - `source/host/` - the sandbox host, in C. This is the product: builds
   `libminiboxhost` on Linux (validated) and Windows (cross-compiled via
-  mingw-w64; see `cross/mingw-w64.ini`). A from-scratch C port of BizHawk's
+  mingw-w64; see `source/host/mingw-w64.ini`). A from-scratch C port of BizHawk's
   Rust waterboxhost (the historical reference, in the BizHawk repo and this
   repo's git history); no Rust or nightly toolchain is needed.
 - `source/guest/` - miniBox's guest build machinery (the core-author kit):
@@ -47,7 +47,7 @@ source/guest/build-toolchain.sh          # bootstrap the guest toolchain -> buil
 meson setup build/meson-linux            # the host + tests
 meson test  -C build/meson-linux
 # Windows host DLL (cross-compile check):
-meson setup   build/meson-windows --cross-file cross/mingw-w64.ini
+meson setup   build/meson-windows --cross-file source/host/mingw-w64.ini
 ninja compile -C build/meson-windows
 ```
 
