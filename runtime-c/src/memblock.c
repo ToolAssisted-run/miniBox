@@ -98,13 +98,18 @@ static void refresh_all(mb_block *b);
 
 void mb_block_activate(mb_block *b) {
 	if (b->active) return;
-	mb_range in = b->addr;
-	mb_range out;
-	mb_pal_map_handle(b->handle, in, &out);
-	mb_tripguard_register(b);
-	b->swapped_in = true;
+	if (!b->swapped_in) {
+		mb_range in = b->addr, out;
+		if (mb_pal_map_handle(b->handle, in, &out) != 0) {
+			fprintf(stderr, "miniBox: FATAL failed to map block at %llx (slice busy?)\n",
+			        (unsigned long long)b->addr.start);
+			abort();
+		}
+		mb_tripguard_register(b);
+		b->swapped_in = true;
+		refresh_all(b);
+	}
 	b->active = true;
-	refresh_all(b);
 }
 
 void mb_block_deactivate(mb_block *b) {

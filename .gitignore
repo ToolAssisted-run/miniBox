@@ -10,3 +10,4 @@ runtime-c/libminiboxhost.so
 toolchain/emulibc/obj/
 tests/conformance/guest.wbx
 tests/conformance/run_guest
+tests/conformance/probe*

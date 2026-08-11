@@ -1,0 +1,114 @@
+/* Savestate corner cases: the round-trip semantics that separate a correct
+ * dirty-tracker from a broken one. */
+#include "minibox_internal.h"
+#include "test_util.h"
+
+static volatile uint8_t *gp(mb_block *b, uintptr_t off) { return (volatile uint8_t *)(b->addr.start + off); }
+
+static mb_block *fresh_rw(uintptr_t size) {
+	mb_range a = { 0x36f00000000ull, size };
+	mb_block *b = mb_block_new(a);
+	mb_block_activate(b);
+	mb_range r = { a.start, size };
+	mb_block_mmap_fixed(b, r, MB_PROT_RW, true);
+	return b;
+}
+
+/* The core property: load reverts pages dirtied AFTER the save, and restores
+ * pages that were clean at save time back to their sealed baseline. */
+static void test_revert_after_save(void) {
+	mb_block *b = fresh_rw(0x10000);
+	for (int i = 0; i < 0x10000; i++) gp(b, i)[0] = (uint8_t)(i * 7 + 1);  /* baseline content */
+	CHECK_EQ(mb_block_seal(b), 0);
+
+	gp(b, 0x0010)[0] = 0xAA;  /* dirty page 0 post-seal */
+	gp(b, 0x3abc)[0] = 0xBB;  /* dirty page 3 post-seal */
+
+	membuf st = {0};
+	CHECK_EQ(mb_block_save_state(b, membuf_write, (uintptr_t)&st), 0);
+
+	gp(b, 0x0010)[0] = 0x11;   /* change saved pages */
+	gp(b, 0x3abc)[0] = 0x22;
+	gp(b, 0x8000)[0] = 0x33;   /* dirty a page that was CLEAN at save time */
+
+	st.pos = 0;
+	CHECK_EQ(mb_block_load_state(b, membuf_read, (uintptr_t)&st), 0);
+	CHECK_EQ(gp(b, 0x0010)[0], 0xAA);
+	CHECK_EQ(gp(b, 0x3abc)[0], 0xBB);
+	CHECK_EQ(gp(b, 0x8000)[0], (uint8_t)(0x8000 * 7 + 1));  /* reverted to baseline */
+	membuf_free(&st);
+	mb_block_free(b);
+}
+
+/* Invisible pages are excluded from state: their content is NOT saved/restored. */
+static void test_invisible_excluded(void) {
+	mb_block *b = fresh_rw(0x10000);
+	mb_range iv = { b->addr.start + 0x9000, 0x1000 };
+	mb_block_mark_invisible(b, iv);
+	CHECK_EQ(mb_block_seal(b), 0);
+
+	gp(b, 0x1000)[0] = 0x55;   /* normal page */
+	gp(b, 0x9000)[0] = 0x66;   /* invisible page */
+	membuf st = {0};
+	CHECK_EQ(mb_block_save_state(b, membuf_write, (uintptr_t)&st), 0);
+
+	gp(b, 0x1000)[0] = 0x77;
+	gp(b, 0x9000)[0] = 0x88;   /* change invisible after save */
+	st.pos = 0;
+	CHECK_EQ(mb_block_load_state(b, membuf_read, (uintptr_t)&st), 0);
+	CHECK_EQ(gp(b, 0x1000)[0], 0x55);   /* normal page reverted */
+	CHECK_EQ(gp(b, 0x9000)[0], 0x88);   /* invisible page NOT reverted */
+	membuf_free(&st);
+	mb_block_free(b);
+}
+
+/* A page zero at seal, written then reverted, comes back zero (ZeroFilled
+ * baseline path). */
+static void test_zerofilled_baseline(void) {
+	mb_block *b = fresh_rw(0x4000);
+	/* leave all zero at seal */
+	CHECK_EQ(mb_block_seal(b), 0);
+	membuf st = {0};
+	CHECK_EQ(mb_block_save_state(b, membuf_write, (uintptr_t)&st), 0);  /* nothing dirty */
+	gp(b, 0x100)[0] = 0x99;
+	st.pos = 0;
+	CHECK_EQ(mb_block_load_state(b, membuf_read, (uintptr_t)&st), 0);
+	CHECK_EQ(gp(b, 0x100)[0], 0);   /* reverted to zero baseline */
+	membuf_free(&st);
+	mb_block_free(b);
+}
+
+/* Repeated save/load round-trips remain stable. */
+static void test_repeated_roundtrip(void) {
+	mb_block *b = fresh_rw(0x8000);
+	CHECK_EQ(mb_block_seal(b), 0);
+	gp(b, 0x10)[0] = 0xAB;
+	membuf st = {0};
+	CHECK_EQ(mb_block_save_state(b, membuf_write, (uintptr_t)&st), 0);
+	for (int i = 0; i < 5; i++) {
+		gp(b, 0x10)[0] = (uint8_t)i;
+		st.pos = 0;
+		CHECK_EQ(mb_block_load_state(b, membuf_read, (uintptr_t)&st), 0);
+		CHECK_EQ(gp(b, 0x10)[0], 0xAB);
+	}
+	membuf_free(&st);
+	mb_block_free(b);
+}
+
+/* Save before seal is an error. */
+static void test_save_before_seal(void) {
+	mb_block *b = fresh_rw(0x2000);
+	membuf st = {0};
+	CHECK(mb_block_save_state(b, membuf_write, (uintptr_t)&st) != 0);
+	membuf_free(&st);
+	mb_block_free(b);
+}
+
+static void run_all(void) {
+	RUN(test_revert_after_save);
+	RUN(test_invisible_excluded);
+	RUN(test_zerofilled_baseline);
+	RUN(test_repeated_roundtrip);
+	RUN(test_save_before_seal);
+}
+TEST_MAIN()
