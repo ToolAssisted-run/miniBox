@@ -30,12 +30,25 @@ the BizHawk team and contributors, MIT License. This covers:
 
 ### musl libc - MIT (Rich Felker and contributors)
 
-`extern/musl` is a git submodule of a waterbox-retargeted fork of musl libc
-(https://github.com/nattthebear/musl, forked from https://musl.libc.org),
-Copyright (c) 2005-2020 Rich Felker and the musl contributors, MIT License. The
-full text and complete author list are in that submodule's `COPYRIGHT` file. The
-waterbox-arch additions in the fork (the `waterbox` architecture directory, the
-syscall trampoline glue) are contributed under the same MIT terms.
+`extern/musl` is a **vendored** copy of a waterbox-retargeted fork of musl libc
+(https://github.com/nattthebear/musl @ 2063abc4, forked from
+https://musl.libc.org), Copyright (c) 2005-2020 Rich Felker and the musl
+contributors, MIT License. The full text and complete author list are in that
+tree's `COPYRIGHT` file. The waterbox-arch additions in the fork (the `waterbox`
+architecture directory, the syscall trampoline glue) are contributed under the
+same MIT terms.
+
+It is vendored rather than tracked as a submodule because upstream is no longer
+maintained (no divergence to reconcile), and miniBox carries one local fix
+applied directly in the tree:
+
+- `arch/waterbox/atomic_arch.h`: `a_inc`/`a_dec` were `*p++`/`*p--` (increment
+  the POINTER and discard it) instead of `(*p)++`/`(*p)--`. Harmless
+  single-threaded, but with multiple guest threads it corrupts musl's `vmlock`
+  counter (decremented on every `__vm_unlock`, never incremented), so a guest
+  that frees memory while multithreaded deadlocks in `__vm_wait`. Found by
+  miniBox's threaded guest test. This bug is present in upstream waterbox musl
+  and affects BizHawk's Rust host too.
 
 ### libco - public domain (byuu)
 

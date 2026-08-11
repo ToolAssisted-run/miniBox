@@ -29,10 +29,11 @@ ATTRIBUTION.md for the full component-by-component breakdown.
   repo's git history); no Rust or nightly toolchain is needed.
 - `source/guest/` - miniBox's guest build machinery (the core-author kit):
   `linkscript.T` (fixed base 0x36f00000000, .sealed/.invis sections),
-  `common.mak`, the musl `patches/`, and `build-toolchain.sh` + meson glue
-  that drive the `extern/` libraries below.
-- `extern/` - external/vendored libraries: `musl` (submodule @ 2063abc4, the
-  guest libc), `emulibc` (BizHawk's guest support lib: ECL_* macros,
+  `common.mak`, and `build-toolchain.sh` + meson glue that drive the
+  `extern/` libraries below.
+- `extern/` - external/vendored libraries: `musl` (the guest libc, vendored
+  from nattthebear/musl @ 2063abc4 with one local fix baked in - see
+  ATTRIBUTION.md), `emulibc` (BizHawk's guest support lib: ECL_* macros,
   sealed/invisible/plain allocators, `__wbxsysinfo`), `libco` (byuu's
   cothreads), `libcxx` (LLVM sysroot build scripts for C++ guests).
 - `tests/` - the test suite (host unit tests + guest system tests).

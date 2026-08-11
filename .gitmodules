@@ -1,3 +1,0 @@
-[submodule "extern/musl"]
-	path = extern/musl
-	url = https://github.com/nattthebear/musl.git

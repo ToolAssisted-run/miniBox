@@ -13,17 +13,9 @@ musl="$root/extern/musl"
 export SYSROOT="$root/build/sysroot"
 export CC="${CC:-gcc}"
 
-# Apply our musl patches (idempotent) before building. The submodule stays
-# pinned to pristine upstream; these are the miniBox-specific fixes.
-for p in "$here"/patches/*.patch; do
-	[ -e "$p" ] || continue
-	if git -C "$musl" apply --reverse --check "$p" >/dev/null 2>&1; then
-		echo "patch already applied: $(basename "$p")"
-	else
-		echo "applying patch: $(basename "$p")"
-		git -C "$musl" apply "$p"
-	fi
-done
+# extern/musl is vendored (not a submodule): the waterbox-retargeted musl fork
+# with miniBox's fixes already applied in the source tree. See ATTRIBUTION.md
+# for the divergence from pristine upstream. Nothing to patch here anymore.
 
 if [ ! -f "$SYSROOT/lib/libc.a" ]; then
 	echo "building musl (CC=$CC) -> $SYSROOT ..."
