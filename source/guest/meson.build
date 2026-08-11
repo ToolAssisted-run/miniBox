@@ -1,6 +1,6 @@
 # The waterbox guest toolchain, exposed to meson consumers.
 #
-# The toolchain itself (musl + emulibc) is bootstrapped once by
+# The toolchain (musl in extern/, emulibc in extern/) is bootstrapped once by
 # build-toolchain.sh (GCC path, no clang). This file does NOT rebuild it - it
 # locates the built sysroot and exports the pieces a consumer needs to compile
 # a .wbx guest via a custom_target:
@@ -21,7 +21,7 @@ fs = import('fs')
 
 waterbox_sysroot     = meson.current_source_dir() / 'sysroot'
 waterbox_musl_gcc    = waterbox_sysroot / 'bin' / 'musl-gcc'
-waterbox_emulibc_dir = meson.current_source_dir() / 'emulibc'
+waterbox_emulibc_dir = meson.project_source_root() / 'extern' / 'emulibc'
 waterbox_linkscript  = meson.current_source_dir() / 'linkscript.T'
 
 # The frozen guest flags (COMMONFLAGS from common.mak; C, no C++/LTO).
@@ -46,7 +46,7 @@ if waterbox_toolchain_ready
   waterbox_emulibc_obj = waterbox_emulibc_ct
 else
   waterbox_emulibc_obj = waterbox_emulibc_dir / 'obj' / 'release' / 'emulibc.c.o'  # placeholder
-  message('Guest toolchain not bootstrapped; run toolchain/build-toolchain.sh ' +
+  message('Guest toolchain not bootstrapped; run source/guest/build-toolchain.sh ' +
           '(builds musl with gcc). Guest .wbx targets will be unavailable.')
 endif
 

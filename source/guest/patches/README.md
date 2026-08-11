@@ -1,6 +1,6 @@
 # musl patches
 
-Patches applied to the `toolchain/musl` submodule (a pristine checkout of
+Patches applied to the `extern/musl` submodule (a pristine checkout of
 nattthebear/musl) by `build-toolchain.sh` before building. Kept as patch files
 rather than a musl fork so the submodule stays pinned to the exact upstream
 commit.

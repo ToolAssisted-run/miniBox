@@ -11,12 +11,12 @@ subdir('unit')
 
 # ---- guest system tests (need the bootstrapped musl; emulibc.o is meson-built) ----
 fs = import('fs')
-musl_gcc = meson.project_source_root() / 'toolchain' / 'sysroot' / 'bin' / 'musl-gcc'
+musl_gcc = meson.project_source_root() / 'source' / 'guest' / 'sysroot' / 'bin' / 'musl-gcc'
 
 if fs.exists(musl_gcc)
   subdir('conformance')
   subdir('threads')
 else
-  message('Guest toolchain not bootstrapped (toolchain/sysroot/bin/musl-gcc ' +
-          'missing); skipping guest system tests. Run toolchain/build-toolchain.sh')
+  message('Guest toolchain not bootstrapped (source/guest/sysroot/bin/musl-gcc ' +
+          'missing); skipping guest system tests. Run source/guest/build-toolchain.sh')
 endif

@@ -2,7 +2,7 @@
 # waterbox-guest.ini.in with absolute toolchain paths filled in.
 #
 # Usage from a core project:
-#   meson setup build-guest --cross-file <builddir>/toolchain/waterbox-guest.ini
+#   meson setup build-guest --cross-file <builddir>/source/guest/waterbox-guest.ini
 #   # then in the core's meson.build:
 #   executable('core.wbx', 'core.c', link_args: ['@EMULIBC_OBJ@', '-lgcc'])
 #

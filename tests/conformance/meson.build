@@ -1,6 +1,6 @@
 # System test: build a gcc guest .wbx and run it through the host end-to-end.
 # Reached only when the guest toolchain is present (guarded in ../meson.build).
-# Uses the shared waterbox_guest_* variables from toolchain/meson.build.
+# Uses the shared waterbox_guest_* variables from source/guest/meson.build.
 
 guest_wbx = custom_target('guest.wbx',
   input: 'guest.c',
