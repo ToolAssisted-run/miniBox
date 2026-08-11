@@ -54,9 +54,13 @@ compile their emulation source into a platform-neutral `.wbx`.
    conformance guest (tests/conformance/) runs end-to-end - Init, guest
    syscalls, sealed/invisible memory, seal, and a savestate round-trip all
    pass. GCC-only: no clang/lld/LLVM needed for pure-C guests.
-   Phase 2 (pending): green threads/futex/clone, the Windows PAL (fault
-   handler + guard pages) and the MsHostSysVGuest ABI adapter, cothread
-   support - for multi-threaded and C++ real cores.
+   Phase 2 IN PROGRESS: green threads/futex/clone DONE (threading.c;
+   cooperative scheduler, futex WAIT/WAKE/REQUEUE/PI, clone, thread-set
+   savestate) - validated with a pthreaded guest (mutex + condvar + join +
+   savestate). Remaining: the Windows PAL (VEH fault handler + guard-page
+   stack tracking + CreateFileMapping) and the MsHostSysVGuest win64<->sysv64
+   ABI adapter - written from the Rust reference but only runtime-validatable
+   on Windows; cothread support for C++ cores.
 2. Guest ABI v1 + conformance tests, runnable entirely without miniHawk.
 3. Machine specification document - the frozen contract both implementations
    are held to.
