@@ -272,7 +272,7 @@ int mb_host_unmount(mb_host *h, const char *name, uint8_t **out, size_t *outlen)
 size_t  mb_host_page_len(mb_host *h) { return mb_block_page_len(h->block); }
 uint8_t mb_host_page_info(mb_host *h, size_t i) { return mb_block_page_info(h->block, i); }
 
-/* ---- top-level save/load (structure per MACHINE-SPEC.md section 6) ---- */
+/* ---- top-level save/load (structure per docs/docs/MACHINE-SPEC.md section 6) ---- */
 
 static const char SAVE_START[] = "ActivatedWaterboxHost_v1";
 /* SAVE_END: the reference's upside-down "ActivatedWaterboxHost" (UTF-8 bytes) */

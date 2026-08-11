@@ -23,30 +23,41 @@ ATTRIBUTION.md for the full component-by-component breakdown.
 ## Layout
 
 - `source/host/` - the sandbox host, in C. This is the product: builds
-  libminiboxhost on Linux (validated) and Windows (cross-compiled via
-  mingw-w64; see cross/mingw-w64.ini). It is a from-scratch C port of
-  BizHawk's Rust waterboxhost (which remains the historical reference,
-  available in the BizHawk repo and in this repo's git history); no Rust or
-  nightly toolchain is needed to build or use miniBox.
-- `extern/` - external/vendored libraries: `musl` (submodule, the guest libc),
-  `emulibc` (BizHawk's guest support lib: ECL_* macros, __wbxsysinfo),
-  `libco` (byuu's cothreads), `libcxx` (LLVM build scripts for C++ guests).
+  `libminiboxhost` on Linux (validated) and Windows (cross-compiled via
+  mingw-w64; see `cross/mingw-w64.ini`). A from-scratch C port of BizHawk's
+  Rust waterboxhost (the historical reference, in the BizHawk repo and this
+  repo's git history); no Rust or nightly toolchain is needed.
 - `source/guest/` - miniBox's guest build machinery (the core-author kit):
-  the linkscript, common.mak, the musl patches, and build-toolchain.sh /
-  meson glue that drive the extern/ pieces above. The waterbox-arch
-  musl fork (submodule, nattthebear/musl @ 2063abc4), emulibc (ECL_* macros,
-  sealed/invisible/plain allocators, __wbxsysinfo), libco (cothreads),
-  libcxx build scripts (LLVM sysroot with random_device/tz compiled out),
-  linkscript.T (fixed base 0x36f00000000, .sealed/.invis sections), and
-  common.mak.
-- `docs/` - imported notes.
+  `linkscript.T` (fixed base 0x36f00000000, .sealed/.invis sections),
+  `common.mak`, the musl `patches/`, and `build-toolchain.sh` + meson glue
+  that drive the `extern/` libraries below.
+- `extern/` - external/vendored libraries: `musl` (submodule @ 2063abc4, the
+  guest libc), `emulibc` (BizHawk's guest support lib: ECL_* macros,
+  sealed/invisible/plain allocators, `__wbxsysinfo`), `libco` (byuu's
+  cothreads), `libcxx` (LLVM sysroot build scripts for C++ guests).
+- `tests/` - the test suite (host unit tests + guest system tests).
+- `docs/` - `MACHINE-SPEC.md` (the frozen machine contract) and debugging notes.
+- `build/` - all build output (gitignored): `build/sysroot` (the guest
+  toolchain install), `build/meson-linux`, `build/meson-windows`.
+
+## Building
+
+```
+source/guest/build-toolchain.sh          # bootstrap the guest toolchain -> build/sysroot
+meson setup build/meson-linux            # the host + tests
+meson test  -C build/meson-linux
+# Windows host DLL (cross-compile check):
+meson setup   build/meson-windows --cross-file cross/mingw-w64.ini
+ninja compile -C build/meson-windows
+```
 
 ## Consumption
 
 miniHawk consumes this repository as a submodule at `extern/miniBox` and
-builds the runtime with its own meson dual-target arrangement, shipping it
-with the frontend's OS-dependent artifacts. Core authors use `source/guest/` (with the extern/ libraries) to
-compile their emulation source into a platform-neutral `.wbx`.
+builds the host with its own meson arrangement, shipping it with the
+frontend's OS-dependent artifacts. Core authors use `source/guest/` (with the
+`extern/` libraries) to compile their emulation source into a platform-neutral
+`.wbx`.
 
 ## Roadmap
 

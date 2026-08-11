@@ -64,6 +64,6 @@ ELF parsing are hand-written - so miniBox no longer pulls any crates.
 
 ## miniBox new work - MIT (Sergio Martin, 2026)
 
-New code authored for miniBox - the machine specification (MACHINE-SPEC.md), the
+New code authored for miniBox - the machine specification (docs/MACHINE-SPEC.md), the
 C/C++ runtime port, the reorganization, conformance tests, and build glue - is
 Copyright (c) 2026 Sergio Martin, MIT License.

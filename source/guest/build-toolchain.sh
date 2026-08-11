@@ -1,5 +1,5 @@
 #!/bin/sh
-# Bootstraps musl (extern/musl, the guest libc) with GCC into <repo>/sysroot. This is the
+# Bootstraps musl (extern/musl, the guest libc) with GCC into <repo>/build/sysroot. This is the
 # one-time toolchain build a core author runs before meson can compile any .wbx
 # guest. emulibc.o is built by meson itself (source/guest/meson.build), so only
 # musl - which has its own autotools build - is bootstrapped here.
@@ -10,7 +10,7 @@ set -e
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 musl="$root/extern/musl"
-export SYSROOT="$root/sysroot"
+export SYSROOT="$root/build/sysroot"
 export CC="${CC:-gcc}"
 
 # Apply our musl patches (idempotent) before building. The submodule stays

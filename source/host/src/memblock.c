@@ -380,7 +380,7 @@ uint8_t mb_block_page_info(const mb_block *b, size_t i) {
 	return res;
 }
 
-/* ---- savestate (see MACHINE-SPEC.md section 6) ---- */
+/* ---- savestate (see docs/docs/MACHINE-SPEC.md section 6) ---- */
 
 static const char MAGIC[] = "ActivatedMemoryBlock";
 

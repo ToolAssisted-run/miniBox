@@ -1,14 +1,11 @@
 # build directories
 build/
-build-win/
 
 # host build artifacts
 source/host/**/*.o
 source/host/libminiboxhost.so
 
-# guest toolchain build outputs
-sysroot/
-extern/emulibc/obj/
+# guest toolchain fetched sources (built into build/sysroot)
 extern/libcxx/llvm-project/
 
 # test artifacts

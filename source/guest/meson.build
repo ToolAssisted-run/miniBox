@@ -2,7 +2,7 @@
 #
 # The toolchain (musl in extern/, emulibc in extern/) is bootstrapped once by
 # build-toolchain.sh (GCC path, no clang). This file does NOT rebuild it - it
-# locates the built sysroot (at <repo>/sysroot) and exports the pieces a consumer needs to compile
+# locates the built sysroot (at build/sysroot) and exports the pieces a consumer needs to compile
 # a .wbx guest via a custom_target:
 #
 #   minibox = subproject('miniBox')
@@ -19,7 +19,7 @@
 
 fs = import('fs')
 
-waterbox_sysroot     = meson.project_source_root() / 'sysroot'
+waterbox_sysroot     = meson.project_source_root() / 'build' / 'sysroot'
 waterbox_musl_gcc    = waterbox_sysroot / 'bin' / 'musl-gcc'
 waterbox_emulibc_dir = meson.project_source_root() / 'extern' / 'emulibc'
 waterbox_linkscript  = meson.current_source_dir() / 'linkscript.T'
