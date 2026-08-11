@@ -1,15 +1,31 @@
-miniBox is a derivative of the waterbox subsystem of BizHawk
+miniBox - a determinism sandbox derived from the waterbox subsystem of BizHawk
 (https://github.com/TASEmulators/BizHawk).
 
-The imported material - the runtime (waterboxhost), emulibc, libco (itself
-derived from byuu's libco, ISC), the libcxx build scripts, linkscript, and
-build machinery - is the BizHawk contributors' MIT-licensed work. The musl
-libc fork under toolchain/musl carries its own license (MIT, see its COPYRIGHT
-file). New work authored for miniBox is provided under the same MIT License.
+miniBox combines several upstream projects, each under its own permissive
+license, plus new work authored for miniBox. A complete, component-by-component
+inventory of authorship and licenses is in ATTRIBUTION.md. In summary:
+
+- The waterbox itself - the runtime (host), emulibc, libco's amd64 backend, the
+  libcxx build scripts, linkscript, and build machinery - is the BizHawk team's
+  MIT-licensed work.
+- toolchain/musl (git submodule) is a fork of musl libc, Copyright (c) 2005-2020
+  Rich Felker and contributors, MIT (see that submodule's COPYRIGHT file).
+- libco is by byuu (Near), released into the public domain.
+- The LLVM libraries built by toolchain/libcxx (libc++, libc++abi, libunwind,
+  compiler-rt) are the LLVM contributors' work, Apache-2.0 with the LLVM
+  exception; they are fetched and built, not vendored here.
+- The Rust runtime's crate dependencies (MIT/Apache-2.0) are fetched at build
+  time, not vendored here.
+
+All of the above are mutually compatible. miniBox's own new work, and the
+combined distribution, are provided under the MIT License below.
+
+--------------------------
 
 MIT License
 
 Copyright (c) BizHawk team (code derived from BizHawk's waterbox)
+Copyright (c) 2005-2020 Rich Felker and contributors (musl libc, toolchain/musl)
 Copyright (c) 2026 Sergio Martin (miniBox modifications and new work)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:

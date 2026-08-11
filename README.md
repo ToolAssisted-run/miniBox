@@ -13,8 +13,12 @@ filesystem), page-granular dirty tracking against a sealed post-init
 baseline, and whole-machine savestates. The same .wbx runs bit-identically
 on every host OS.
 
-Derived from the BizHawk project's waterbox (github.com/TASEmulators/BizHawk,
-MIT) - see LICENSE for the attribution split.
+Derived from the BizHawk project's waterbox
+(github.com/TASEmulators/BizHawk). miniBox combines several upstream projects,
+each under its own permissive license (BizHawk's waterbox - MIT; musl libc -
+MIT, Rich Felker et al.; libco - public domain, byuu; LLVM libc++ etc. -
+Apache-2.0 w/ LLVM exception, built not vendored). See LICENSE and
+ATTRIBUTION.md for the full component-by-component breakdown.
 
 ## Layout
 
