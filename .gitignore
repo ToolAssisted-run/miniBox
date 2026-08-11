@@ -7,7 +7,7 @@ source/host/**/*.o
 source/host/libminiboxhost.so
 
 # guest toolchain build outputs
-source/guest/sysroot/
+sysroot/
 extern/emulibc/obj/
 extern/libcxx/llvm-project/
 
