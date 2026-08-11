@@ -34,9 +34,6 @@ ATTRIBUTION.md for the full component-by-component breakdown.
   libcxx build scripts (LLVM sysroot with random_device/tz compiled out),
   linkscript.T (fixed base 0x36f00000000, .sealed/.invis sections), and
   common.mak.
-- `managed/` - the C# host layer as imported from BizHawk (WaterboxHost,
-  the wbx_* ABI declarations, the WaterboxCore base and guest ABI). To be
-  adapted into miniHawk's generic-adapter model.
 - `docs/` - imported notes.
 
 ## Consumption
