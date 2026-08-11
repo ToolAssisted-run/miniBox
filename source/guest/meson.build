@@ -24,7 +24,7 @@ waterbox_musl_gcc    = waterbox_sysroot / 'bin' / 'musl-gcc'
 waterbox_emulibc_dir = meson.project_source_root() / 'extern' / 'emulibc'
 waterbox_linkscript  = meson.current_source_dir() / 'linkscript.T'
 
-# The frozen guest flags (COMMONFLAGS from common.mak; C, no C++/LTO).
+# The frozen guest flags (BizHawk waterbox COMMONFLAGS; C, no C++/LTO).
 waterbox_guest_cflags = [
   '-fvisibility=hidden', '-I' + waterbox_emulibc_dir, '-Wall', '-mcmodel=large',
   '-mstack-protector-guard=global', '-fno-pic', '-fno-pie', '-fcf-protection=none',

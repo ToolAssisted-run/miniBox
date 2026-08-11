@@ -29,8 +29,8 @@ ATTRIBUTION.md for the full component-by-component breakdown.
   repo's git history); no Rust or nightly toolchain is needed.
 - `source/guest/` - miniBox's guest build machinery (the core-author kit):
   `linkscript.T` (fixed base 0x36f00000000, .sealed/.invis sections),
-  `common.mak`, and `build-toolchain.sh` + meson glue that drive the
-  `extern/` libraries below.
+  and `build-toolchain.sh` + meson glue (`meson.build`,
+  `waterbox-guest.ini.in`) that drive the `extern/` libraries below.
 - `extern/` - external/vendored libraries: `musl` (the guest libc, vendored
   from nattthebear/musl @ 2063abc4 with one local fix baked in - see
   ATTRIBUTION.md), `emulibc` (BizHawk's guest support lib: ECL_* macros,

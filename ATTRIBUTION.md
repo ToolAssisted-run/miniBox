@@ -23,7 +23,7 @@ the BizHawk team and contributors, MIT License. This covers:
   `__wbxsysinfo`).
 - `extern/libcxx/` - the LLVM sysroot build scripts (the scripts are
   BizHawk's; the libraries they build are LLVM's, see below).
-- `source/guest/linkscript.T`, `source/guest/common.mak` - the guest build machinery.
+- `source/guest/linkscript.T` - the guest link script (fixed base, waterbox sections).
 - `extern/libco/amd64.c` - the waterbox-specific rewrite of libco's amd64
   backend (derived from byuu's libco, see below).
 - `docs/Notes on Debugging.md`.
