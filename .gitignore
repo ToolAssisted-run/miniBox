@@ -4,3 +4,5 @@ toolchain/llvm-project/
 toolchain/*/obj/
 *.wbx
 *.wbx.zst
+runtime-c/**/*.o
+runtime-c/test/test_memblock

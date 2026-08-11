@@ -155,7 +155,27 @@ A one-shot operation after core init, before any savestate. Steps, in order:
 
 Savestate/load are illegal before seal.
 
-## 6. Savestate format (observable - byte-exact across implementations)
+## 6. Savestate format
+
+Savestates are used for rewind/rerecord WITHIN a session; miniHawk movies embed
+inputs, not savestates, so a state never needs to move between host
+implementations or across a spec version. Accordingly:
+
+- What every implementation of a spec version MUST agree on (so behavior is
+  identical): the magic strings, the ELF-hash and readonly-file-hash binding,
+  the set of pages captured (exactly the non-invisible dirty pages), and the
+  4096-byte page contents. These are the correctness-bearing parts.
+- What is implementation-defined: the exact byte encoding of the per-page
+  status and dirty arrays (the Rust reference emits its enum's in-memory bytes;
+  the C port uses the explicit page_info encoding of section 2). Each host must
+  round-trip its OWN states faithfully; cross-host state loading is not a v1
+  requirement.
+
+Differential validation therefore compares GUEST-OBSERVABLE state (memory
+domains, video, audio) after identical input sequences and after save/load
+round-trips - never raw savestate bytes.
+
+The stream layout (structure fixed; integers little-endian; magic as raw UTF-8):
 
 The stream is (all integers little-endian, magic strings as raw UTF-8 bytes):
 
