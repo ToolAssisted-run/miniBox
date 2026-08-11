@@ -22,10 +22,10 @@ ATTRIBUTION.md for the full component-by-component breakdown.
 
 ## Layout
 
-- `runtime/` - the sandbox host (from BizHawk's waterboxhost, Rust). This is
-  the REFERENCE implementation; the plan of record is a C/C++ port (see
-  Roadmap) validated differentially against it, after which this becomes the
-  cross-check implementation.
+- `runtime/` - the sandbox host (from BizHawk's waterboxhost, Rust). The
+  REFERENCE implementation.
+- `runtime-c/` - the C port (the plan of record). Builds libminiboxhost on
+  Linux (validated) and Windows (cross-compiled; see cross/mingw-w64.ini).
 - `toolchain/` - the guest toolchain (the core-author kit): the waterbox-arch
   musl fork (submodule, nattthebear/musl @ 2063abc4), emulibc (ECL_* macros,
   sealed/invisible/plain allocators, __wbxsysinfo), libco (cothreads),

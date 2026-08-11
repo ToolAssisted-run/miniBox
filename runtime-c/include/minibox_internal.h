@@ -41,8 +41,8 @@ typedef struct { uintptr_t sbrk_size, sealed_size, invis_size, plain_size, mmap_
 /* Guest-visible protection of an allocated page. */
 typedef enum { MB_PROT_NONE, MB_PROT_R, MB_PROT_RW, MB_PROT_RX, MB_PROT_RWX, MB_PROT_RWSTACK } mb_prot;
 
-/* ---- PAL (pal_linux.c): thin wrappers over the OS. All ranges page-aligned. ---- */
-typedef struct { int fd; } mb_handle;         /* memfd backing a block */
+/* ---- PAL (pal_linux.c / pal_win.c): thin wrappers over the OS. Ranges aligned. ---- */
+typedef struct { uintptr_t h; } mb_handle;    /* memfd (Linux) or file mapping HANDLE (Windows) */
 int      mb_pal_open_handle(uintptr_t size, mb_handle *out);   /* 0 ok */
 void     mb_pal_close_handle(mb_handle h);
 /* map_handle: start==0 -> OS chooses; else fixed. Returns actual range, no access. */
@@ -51,6 +51,10 @@ void     mb_pal_unmap_handle(mb_range addr);
 int      mb_pal_map_anon(mb_range in, mb_prot prot, mb_range *out);
 void     mb_pal_unmap_anon(mb_range addr);
 int      mb_pal_protect(mb_range addr, mb_prot prot);          /* 0 ok */
+/* Windows only (no-op elsewhere): query one region's guard-page dirtiness for
+ * RWStack tracking. Returns the region size in *out_size and whether it's dirty
+ * (guard bit cleared). Returns 0 on success. */
+int      mb_pal_get_stack_dirty(uintptr_t start, uintptr_t *out_size, bool *out_dirty);
 
 /* ---- sha256.c ---- */
 typedef struct { uint32_t h[8]; uint64_t len; uint8_t buf[64]; size_t fill; } mb_sha256;

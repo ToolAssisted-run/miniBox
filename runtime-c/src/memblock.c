@@ -48,13 +48,19 @@ static uint8_t prot_status(mb_prot prot) {
 }
 
 /* Effective host protection: clean writable pages map read-only so the first
- * write faults (dirty tracking). RWStack on Linux is R-until-written. */
+ * write faults (dirty tracking). RWStack is R-until-written on Linux; on Windows
+ * it is a guard page (RW|GUARD) when clean and plain RW once dirtied. */
 mb_prot mb_page_native_prot(const mb_page *p) {
 	if (p->status == MB_ST_FREE) return MB_PROT_NONE;
+#ifdef _WIN32
+	if (p->status == MB_ST_RWSTACK && p->dirty) return MB_PROT_RW;
+#endif
 	if (p->status == MB_ST_RW && !p->dirty) return MB_PROT_R;
 	if (p->status == MB_ST_RWX && !p->dirty) return MB_PROT_RX;
+#ifndef _WIN32
 	if (p->status == MB_ST_RWSTACK) return p->dirty ? MB_PROT_RW : MB_PROT_R;
-	return status_prot(p->status);
+#endif
+	return status_prot(p->status);  /* Windows RWStack-clean falls through -> RW|GUARD */
 }
 
 void mb_page_maybe_snapshot(mb_page *p, uintptr_t maddr) {
@@ -166,6 +172,37 @@ static size_t validate(mb_block *b, mb_range addr, size_t *pcount) {
 static void set_protections(mb_block *b, size_t pstart, size_t pcount, uint8_t status) {
 	for (size_t i = pstart; i < pstart + pcount; i++) b->pages[i].status = status;
 	refresh_range(b, pstart, pcount);
+#ifdef _WIN32
+	/* On Windows a guard-page (RWStack) write clears the guard bit before we can
+	 * observe it, so pre-capture snapshots now while the content is baseline. */
+	if (status == MB_ST_RWSTACK)
+		for (size_t i = pstart; i < pstart + pcount; i++)
+			mb_page_maybe_snapshot(&b->pages[i], mirror_addr(b, b->addr.start + (i << MB_PAGESHIFT)));
+#endif
+}
+
+/* Windows: recover RWStack dirtiness by scanning cleared guard bits. Must run
+ * before any op that changes an RWStack page's status or reads its state. No-op
+ * on Linux (RWStack goes through the fault handler). */
+static void get_stack_dirty(mb_block *b) {
+#ifdef _WIN32
+	if (!b->swapped_in) return;
+	uintptr_t start = b->addr.start;
+	size_t pi = 0;
+	while (start < mb_range_end(b->addr)) {
+		if (!b->pages[pi].dirty && b->pages[pi].status == MB_ST_RWSTACK) {
+			uintptr_t size; bool dirty;
+			if (mb_pal_get_stack_dirty(start, &size, &dirty) != 0) { pi++; start += MB_PAGESIZE; continue; }
+			while (size > 0 && start < mb_range_end(b->addr)) {
+				if (dirty && b->pages[pi].status == MB_ST_RWSTACK) b->pages[pi].dirty = true;
+				size -= size < MB_PAGESIZE ? size : MB_PAGESIZE;
+				start += MB_PAGESIZE; pi++;
+			}
+		} else { start += MB_PAGESIZE; pi++; }
+	}
+#else
+	(void)b;
+#endif
 }
 
 /* ---- allocation ops ---- */
@@ -214,6 +251,7 @@ long mb_block_mmap(mb_block *b, mb_range addr, mb_prot prot, mb_range arena, boo
 }
 
 int mb_block_mprotect(mb_block *b, mb_range addr, mb_prot prot) {
+	get_stack_dirty(b);
 	size_t pcount, ps = validate(b, addr, &pcount);
 	if (ps == (size_t)-1) return -EINVAL;
 	for (size_t i = ps; i < ps + pcount; i++)
@@ -236,6 +274,7 @@ static void free_pages(mb_block *b, size_t ps, size_t pcount, bool advise_only) 
 }
 
 static int munmap_impl(mb_block *b, mb_range addr, bool advise_only) {
+	get_stack_dirty(b);
 	size_t pcount, ps = validate(b, addr, &pcount);
 	if (ps == (size_t)-1) return -EINVAL;
 	for (size_t i = ps; i < ps + pcount; i++)
@@ -250,6 +289,7 @@ int mb_block_madvise_dontneed(mb_block *b, mb_range addr) { return munmap_impl(b
 /* in-place mremap only (grow needs following pages free; shrink munmaps tail) */
 long mb_block_mremap(mb_block *b, mb_range addr, uintptr_t new_size, mb_range arena) {
 	(void)arena;
+	get_stack_dirty(b);
 	if (addr.size == 0 || new_size == 0) return -EINVAL;
 	if (addr.start == 0) return -ENOSYS; /* move path unreachable in the reference */
 	size_t pcount, ps = validate(b, addr, &pcount);
@@ -296,12 +336,18 @@ int mb_block_copy_from_external(mb_block *b, const uint8_t *src, uintptr_t start
 
 int mb_block_seal(mb_block *b) {
 	if (b->sealed) { fprintf(stderr, "miniBox: already sealed\n"); return -EINVAL; }
+	get_stack_dirty(b);
 	for (size_t i = 0; i < b->npages; i++) {
 		if (b->pages[i].dirty && !b->pages[i].invisible) {
 			b->pages[i].dirty = false;
 			free(b->pages[i].snap_data);
 			b->pages[i].snap_data = NULL;
 			b->pages[i].snap_kind = MB_SNAP_NONE; /* live memory is the baseline */
+#ifdef _WIN32
+			/* guard-page pages need a pre-captured baseline (as in set_protections) */
+			if (b->pages[i].status == MB_ST_RWSTACK)
+				mb_page_maybe_snapshot(&b->pages[i], mirror_addr(b, b->addr.start + (i << MB_PAGESHIFT)));
+#endif
 		}
 	}
 	refresh_all(b);
@@ -353,6 +399,7 @@ static int rd(mb_read_cb r, uintptr_t ud, void *data, uintptr_t n) {
 
 int mb_block_save_state(mb_block *b, mb_write_cb w, uintptr_t ud) {
 	if (!b->sealed) return -EINVAL;
+	get_stack_dirty(b);
 	if (wr(w, ud, MAGIC, sizeof(MAGIC) - 1)) return -EIO;
 	if (wr(w, ud, b->hash, 32)) return -EIO;
 	if (wr(w, ud, &b->addr, sizeof(b->addr))) return -EIO;
@@ -369,6 +416,7 @@ int mb_block_save_state(mb_block *b, mb_write_cb w, uintptr_t ud) {
 
 int mb_block_load_state(mb_block *b, mb_read_cb r, uintptr_t ud) {
 	if (!b->sealed) return -EINVAL;
+	get_stack_dirty(b);
 	char magic[sizeof(MAGIC) - 1];
 	if (rd(r, ud, magic, sizeof(magic))) return -EIO;
 	if (memcmp(magic, MAGIC, sizeof(magic)) != 0) return -EINVAL;

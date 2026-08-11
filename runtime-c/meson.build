@@ -10,7 +10,6 @@ minibox_host_inc = include_directories('include')
 
 minibox_host_sources = files(
   'src/sha256.c',
-  'src/pal_linux.c',
   'src/memblock.c',
   'src/tripguard.c',
   'src/interop_bin.c',
@@ -20,7 +19,16 @@ minibox_host_sources = files(
   'src/host.c',
   'src/threading.c',
   'src/cinterface.c',
+  'src/calling_convention_adapters.c',
 )
+
+# The PAL is platform-specific (each file self-guards with #ifdef, so listing
+# both is also fine, but select the right one for clarity).
+if host_machine.system() == 'windows'
+  minibox_host_sources += files('src/pal_win.c')
+else
+  minibox_host_sources += files('src/pal_linux.c')
+endif
 
 # -fno-strict-aliasing: the memory block reinterprets guest bytes freely through
 # the mirror; keep the optimizer honest about that.

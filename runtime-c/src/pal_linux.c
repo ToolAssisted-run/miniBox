@@ -1,5 +1,6 @@
 /* Platform abstraction layer, Linux x86-64. Mirrors runtime/src/memory_block/pal.rs
  * (the nix module). Not meant for general consumption - minimal checking. */
+#ifndef _WIN32
 #define _GNU_SOURCE
 #include "minibox_internal.h"
 #include <sys/mman.h>
@@ -29,16 +30,16 @@ int mb_pal_open_handle(uintptr_t size, mb_handle *out) {
 	int fd = (int)syscall(SYS_memfd_create, "MiniBoxBlock", MFD_CLOEXEC);
 	if (fd == -1) return -1;
 	if (ftruncate(fd, (off_t)size) != 0) { close(fd); return -1; }
-	out->fd = fd;
+	out->h = (uintptr_t)fd;
 	return 0;
 }
 
-void mb_pal_close_handle(mb_handle h) { if (h.fd >= 0) close(h.fd); }
+void mb_pal_close_handle(mb_handle h) { if ((int)h.h >= 0) close((int)h.h); }
 
 int mb_pal_map_handle(mb_handle h, mb_range in, mb_range *out) {
 	int flags = MAP_SHARED;
 	if (in.start != 0) flags |= MAP_FIXED | MAP_FIXED_NOREPLACE;
-	void *p = mmap((void *)in.start, in.size, PROT_NONE, flags, h.fd, 0);
+	void *p = mmap((void *)in.start, in.size, PROT_NONE, flags, (int)h.h, 0);
 	if (p == MAP_FAILED) return -1;
 	out->start = (uintptr_t)p;
 	out->size = in.size;
@@ -62,3 +63,9 @@ void mb_pal_unmap_anon(mb_range addr) { munmap((void *)addr.start, addr.size); }
 int mb_pal_protect(mb_range addr, mb_prot prot) {
 	return mprotect((void *)addr.start, addr.size, prot_to_native(prot));
 }
+
+/* Linux: RWStack uses the fault handler, so no guard-page sweep is needed. */
+int mb_pal_get_stack_dirty(uintptr_t start, uintptr_t *out_size, bool *out_dirty) {
+	(void)start; *out_size = MB_PAGESIZE; *out_dirty = true; return 0;
+}
+#endif

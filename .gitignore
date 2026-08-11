@@ -14,3 +14,4 @@ tests/conformance/probe*
 tests/threads/guest_threads.wbx
 tests/threads/run_threads
 toolchain/sysroot/
+build-win/

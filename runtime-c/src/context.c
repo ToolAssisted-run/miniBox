@@ -1,17 +1,25 @@
 /* Host<->guest transitions. Maps the fixed interop blob (interop.bin, assembled
  * from runtime/src/context/interop.s) at MB_ORG and drives entries through it.
  * Faithful C port of runtime/src/context/{mod.rs,thunks.rs} (Linux path). */
+#ifndef _WIN32
 #define _GNU_SOURCE
+#endif
 #include "minibox_internal.h"
-#include <sys/syscall.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#ifndef _WIN32
+#include <sys/syscall.h>
+#include <unistd.h>
+#else
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 #define CALL_GUEST_SIMPLE_ADDR (MB_ORG + 0x100)
 #define CALL_GUEST_IMPL_ADDR   (MB_ORG + 0x200)
 #define EXTCALL_THUNK_ADDR     (MB_ORG + 0x300)
+#define RUNTIME_TABLE_ADDR     (MB_ORG + 0x800)
 
 /* interop.bin lives in the sibling reference tree; embedded at build time. */
 extern const unsigned char mb_interop_bin[];
@@ -29,18 +37,31 @@ static void init_interop_area(void) {
 	}
 	memcpy((void *)MB_ORG, mb_interop_bin, mb_interop_bin_len);
 	mb_pal_protect(mb_range_align_expand(want), MB_PROT_RX);
+#ifdef _WIN32
+	/* register the hand-written unwind info so host SEH can unwind across the
+	 * guest stack-switch (the table lives at RUNTIME_TABLE_ADDR in interop.bin) */
+	if (!RtlAddFunctionTable((PRUNTIME_FUNCTION)RUNTIME_TABLE_ADDR, 2, MB_ORG)) {
+		fprintf(stderr, "miniBox: RtlAddFunctionTable failed\n");
+		abort();
+	}
+#endif
 	g_interop_ready = true;
 }
 
-/* Per-host-thread mini-TLS block reached via [gs:0x18] (index 3). */
+#ifndef _WIN32
+/* Per-host-thread mini-TLS block reached via [gs:0x18] (index 3). Windows uses
+ * the TEB's SubSystemTib field at gs:0x18 directly, so no setup is needed. */
 static __thread uintptr_t g_tib[4];
+#endif
 
 void mb_prepare_thread(void) {
 	init_interop_area();
+#ifndef _WIN32
 	uintptr_t gs = 0;
 	if (syscall(SYS_arch_prctl, 0x1004 /*ARCH_GET_GS*/, &gs) == 0 && gs == 0) {
 		syscall(SYS_arch_prctl, 0x1001 /*ARCH_SET_GS*/, (uintptr_t)&g_tib[0]);
 	}
+#endif
 }
 
 void mb_context_init(mb_context *c, uintptr_t guest_rsp, uintptr_t guest_rsp_alt, mb_syscall_cb dispatch) {
