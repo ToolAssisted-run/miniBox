@@ -14,8 +14,11 @@ The sandbox design and the bulk of the imported code come from the waterbox
 subsystem of BizHawk (https://github.com/TASEmulators/BizHawk), Copyright (c)
 the BizHawk team and contributors, MIT License. This covers:
 
-- `runtime/` - the sandbox host (originally `waterbox/waterboxhost`, Rust).
-- `runtime/src/context/interop.s` and `interop.bin` - the stack-switch blob.
+- `host/` - the sandbox host, a from-scratch C port of BizHawk's Rust
+  `waterbox/waterboxhost`. (The Rust original was carried in this repo's early
+  history as `runtime/` and has since been removed; it lives on in BizHawk.)
+- `host/src/interop_bin.c` embeds `interop.bin` - the stack-switch blob
+  assembled from BizHawk's `waterbox/waterboxhost/src/context/interop.s`.
 - `toolchain/emulibc/` - the guest support library (ECL_* macros, allocators,
   `__wbxsysinfo`).
 - `toolchain/libcxx/` - the LLVM sysroot build scripts (the scripts are
@@ -52,13 +55,12 @@ standard library, unwinder, and compiler builtins. Those sources are Copyright
 downloaded during a guest toolchain build, not stored in this repository; the
 license applies to the built guest artifacts.
 
-### Rust crate dependencies of the runtime - MIT / Apache-2.0
+### (Former) Rust crate dependencies
 
-`runtime/Cargo.toml` depends on third-party crates (bitflags, page_size,
-lazy_static, itertools, goblin, anyhow, sha2, and platform crates winapi / libc),
-each MIT or Apache-2.0 licensed by its respective authors. They are fetched by
-cargo at build time and pinned in `Cargo.lock`, not vendored here. The planned
-C/C++ port of the runtime removes these dependencies.
+The early Rust reference (`runtime/`, now removed) depended on third-party
+crates (bitflags, page_size, lazy_static, itertools, goblin, anyhow, sha2,
+winapi/libc). The C port (`host/`) has NO external dependencies - SHA-256 and
+ELF parsing are hand-written - so miniBox no longer pulls any crates.
 
 ## miniBox new work - MIT (Sergio Martin, 2026)
 

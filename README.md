@@ -22,10 +22,12 @@ ATTRIBUTION.md for the full component-by-component breakdown.
 
 ## Layout
 
-- `runtime/` - the sandbox host (from BizHawk's waterboxhost, Rust). The
-  REFERENCE implementation.
-- `runtime-c/` - the C port (the plan of record). Builds libminiboxhost on
-  Linux (validated) and Windows (cross-compiled; see cross/mingw-w64.ini).
+- `host/` - the sandbox host, in C. This is the product: builds
+  libminiboxhost on Linux (validated) and Windows (cross-compiled via
+  mingw-w64; see cross/mingw-w64.ini). It is a from-scratch C port of
+  BizHawk's Rust waterboxhost (which remains the historical reference,
+  available in the BizHawk repo and in this repo's git history); no Rust or
+  nightly toolchain is needed to build or use miniBox.
 - `toolchain/` - the guest toolchain (the core-author kit): the waterbox-arch
   musl fork (submodule, nattthebear/musl @ 2063abc4), emulibc (ECL_* macros,
   sealed/invisible/plain allocators, __wbxsysinfo), libco (cothreads),
@@ -48,7 +50,7 @@ compile their emulation source into a platform-neutral `.wbx`.
 
 1. C/C++ port of the runtime (drops the nightly-Rust requirement; validated
    against the Rust reference over shared guests and inputs).
-   Phase 1 DONE (runtime-c/): memory block + dirty tracking + savestates +
+   Phase 1 DONE (host/): memory block + dirty tracking + savestates +
    ELF load + interop/thunks + VFS + the syscall core; links as
    libminiboxhost.so (all 16 wbx_* exports, no external deps). A gcc-built
    conformance guest (tests/conformance/) runs end-to-end - Init, guest

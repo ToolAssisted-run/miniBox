@@ -1,8 +1,8 @@
 # The miniBox machine specification (v1)
 
 This is the FROZEN, VERSIONED contract that defines the deterministic machine a
-miniBox guest core runs on. Every host implementation (the imported Rust
-reference in `runtime/`, the C/C++ port in `runtime-c/`, any future one) must
+miniBox guest core runs on. Every host implementation (the C host in `host/`,
+any future one) must
 implement exactly this observable machine; any two implementations of spec
 version N must be bit-identical for the same (guest image, mounted files, input
 sequence). Movies record the machine-spec version; it is the third element of
@@ -13,8 +13,9 @@ savestate depend on. Host-internal representation (how pages are tracked, how
 snapshots are stored) is NOT observable and may differ between implementations,
 as long as the guest-visible behavior and the savestate byte stream match.
 
-This document is derived from BizHawk's waterbox, which is the reference
-implementation; where it says "the reference" it means `runtime/`.
+This document is derived from BizHawk's waterbox, the original reference for
+these behaviors; the authoritative contract, however, is this document, not
+any implementation.
 
 ## 1. Address space
 

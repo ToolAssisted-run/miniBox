@@ -15,7 +15,7 @@ project('miniBox', 'c',
   default_options: ['c_std=c11', 'warning_level=2', 'default_library=both'],
 )
 
-subdir('runtime-c')
+subdir('host')
 subdir('toolchain')   # exposes the waterbox_guest_* variables (guest .wbx build)
 
 # Tests are opt-in for subproject consumers; on by default for a standalone build.

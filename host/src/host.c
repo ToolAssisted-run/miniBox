@@ -1,0 +1,333 @@
+/* WaterboxHost: ties the memory block, ELF loader, VFS, and context together;
+ * dispatches guest syscalls; seals; saves/loads top-level state. Faithful C
+ * port of BizHawk waterboxhost src/host.rs (Linux single-thread subset). */
+#define _GNU_SOURCE
+#include "minibox_internal.h"
+#include "minibox_threads.h"
+#include "minibox.h"
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+
+struct mb_host {
+	mb_fs *fs;
+	uintptr_t program_break;
+	mb_elf *elf;
+	mb_layout layout;
+	mb_block *block;
+	bool active, sealed;
+	uint8_t *image; size_t image_len;
+	mb_context context;
+	mb_thunks *thunks;
+	mb_threads *threads;
+};
+
+/* ---- syscall numbers (x86-64) ---- */
+enum {
+	NR_read=0, NR_write=1, NR_open=2, NR_close=3, NR_stat=4, NR_fstat=5, NR_lseek=8,
+	NR_mmap=9, NR_mprotect=10, NR_munmap=11, NR_brk=12, NR_rt_sigprocmask=14,
+	NR_ioctl=16, NR_readv=19, NR_writev=20, NR_sched_yield=24, NR_mremap=25, NR_madvise=28,
+	NR_nanosleep=35, NR_getpid=39, NR_exit=60, NR_truncate=76, NR_ftruncate=77,
+	NR_getppid=110, NR_gettid=186, NR_futex=202, NR_set_thread_area=205, NR_clock_nanosleep=230,
+	NR_clock_gettime=228, NR_set_tid_address=218, NR_wbx_clone=2000
+};
+
+#define MAP_ANONYMOUS 0x20
+#define MAP_STACK 0x20000
+#define MAP_FIXED_NOREPLACE 0x100000
+#define MADV_DONTNEED 4
+#define PROT_READ 1
+#define PROT_WRITE 2
+#define PROT_EXEC 4
+#define FUTEX_PRIVATE_FLAG 128
+#define FUTEX_WAIT 0
+#define FUTEX_WAKE 1
+#define FUTEX_REQUEUE 3
+#define FUTEX_LOCK_PI 6
+#define FUTEX_UNLOCK_PI 7
+
+static uintptr_t serr(int e) { return (uintptr_t)(intptr_t)(-e); }  /* -errno as usize */
+static uintptr_t sok(long v) { return (uintptr_t)v; }
+
+static mb_prot arg_to_prot(uintptr_t a, bool *bad) {
+	*bad = false;
+	if (a & ~(uintptr_t)(PROT_READ|PROT_WRITE|PROT_EXEC)) { *bad = true; return MB_PROT_NONE; }
+	if (a & PROT_EXEC) return (a & PROT_WRITE) ? MB_PROT_RWX : MB_PROT_RX;
+	if (a & PROT_WRITE) return MB_PROT_RW;
+	if (a & PROT_READ) return MB_PROT_R;
+	return MB_PROT_NONE;
+}
+
+/* The guest syscall dispatcher (sysv64; installed in the Context). */
+static uintptr_t dispatch(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4,
+                          uintptr_t a5, uintptr_t a6, uintptr_t nr, void *hp) {
+	mb_host *h = (mb_host *)hp;
+	(void)a6;
+	switch (nr) {
+		case NR_mmap: {
+			bool bad; mb_prot prot = arg_to_prot(a3, &bad); if (bad) return serr(EINVAL);
+			uintptr_t flags = a4;
+			if (!(flags & MAP_ANONYMOUS)) return serr(EOPNOTSUPP);
+			if (flags & 0xf00) return serr(EOPNOTSUPP);
+			if (flags & MAP_STACK) { if (prot == MB_PROT_RW) prot = MB_PROT_RWSTACK; else return serr(EINVAL); }
+			bool no_replace = (flags & MAP_FIXED_NOREPLACE) != 0;
+			mb_range r = { a1, a2 };
+			long res = mb_block_mmap(h->block, r, prot, h->layout.mmap_arena, no_replace);
+			return res < 0 ? serr((int)-res) : sok(res);
+		}
+		case NR_mremap: {
+			mb_range r = { a1, a2 };
+			long res = mb_block_mremap(h->block, r, a3, h->layout.mmap_arena);
+			return res < 0 ? serr((int)-res) : sok(res);
+		}
+		case NR_mprotect: {
+			bool bad; mb_prot prot = arg_to_prot(a3, &bad); if (bad) return serr(EINVAL);
+			mb_range r = { a1, a2 };
+			int res = mb_block_mprotect(h->block, r, prot);
+			return res ? serr(-res) : sok(0);
+		}
+		case NR_munmap: { mb_range r = { a1, a2 }; int res = mb_block_munmap(h->block, r); return res ? serr(-res) : sok(0); }
+		case NR_madvise:
+			if (a3 == MADV_DONTNEED) { mb_range r = { a1, a2 }; int res = mb_block_madvise_dontneed(h->block, r); return res ? serr(-res) : sok(0); }
+			return sok(0);
+		case NR_brk: {
+			mb_range arena = h->layout.sbrk; uintptr_t old = h->program_break, res;
+			if (a1 != mb_align_down(a1)) res = old;
+			else if (a1 < arena.start) res = old;
+			else if (a1 > mb_range_end(arena)) { fprintf(stderr, "miniBox: sbrk heap exhausted\n"); res = old; }
+			else if (a1 > old) { mb_range r = { old, a1 - old }; mb_block_mmap_fixed(h->block, r, MB_PROT_RW, true); res = a1; }
+			else res = old;
+			h->program_break = res; return sok((long)res);
+		}
+		case NR_stat:  { long r = mb_fs_stat_name(h->fs, (const char *)a1, (void *)a2); return r < 0 ? serr((int)-r) : sok(0); }
+		case NR_fstat: { long r = mb_fs_stat_fd(h->fs, (int)a1, (void *)a2); return r < 0 ? serr((int)-r) : sok(0); }
+		case NR_ioctl: return sok(0);
+		case NR_read:  { long r = mb_fs_read(h->fs, (int)a1, (uint8_t *)a2, a3); return r < 0 ? serr((int)-r) : sok(r); }
+		case NR_write: { long r = mb_fs_write(h->fs, (int)a1, (const uint8_t *)a2, a3); return r < 0 ? serr((int)-r) : sok(r); }
+		case NR_readv: case NR_writev: {
+			/* iovec: {void* base; size_t len} */
+			struct iov { uintptr_t base; uintptr_t len; } *iov = (struct iov *)a2;
+			long total = 0;
+			for (uintptr_t i = 0; i < a3; i++) {
+				if (!iov[i].base) continue;
+				long r = (nr == NR_readv)
+					? mb_fs_read(h->fs, (int)a1, (uint8_t *)iov[i].base, iov[i].len)
+					: mb_fs_write(h->fs, (int)a1, (const uint8_t *)iov[i].base, iov[i].len);
+				if (r < 0) return serr((int)-r);
+				total += r;
+			}
+			return sok(total);
+		}
+		case NR_open:  { long r = mb_fs_open(h->fs, (const char *)a1, (int)a2); return r < 0 ? serr((int)-r) : sok(r); }
+		case NR_close: { long r = mb_fs_close(h->fs, (int)a1); return r < 0 ? serr((int)-r) : sok(0); }
+		case NR_lseek: { long r = mb_fs_seek(h->fs, (int)a1, (long)a2, (int)a3); return r < 0 ? serr((int)-r) : sok(r); }
+		case NR_truncate:  { long r = mb_fs_truncate_name(h->fs, (const char *)a1, (long)a2); return r < 0 ? serr((int)-r) : sok(0); }
+		case NR_ftruncate: { long r = mb_fs_truncate_fd(h->fs, (int)a1, (long)a2); return r < 0 ? serr((int)-r) : sok(0); }
+		case NR_clock_gettime: {
+			int64_t *ts = (int64_t *)a2;  /* {tv_sec, tv_nsec} */
+			ts[0] = 1495889068; ts[1] = 0; return sok(0);
+		}
+		case NR_rt_sigprocmask: return sok(0);
+		case NR_set_thread_area: return serr(ENOSYS);   /* musl handles in userspace */
+		case NR_set_tid_address: return sok(mb_threads_set_tid_address(h->threads, a1));
+		case NR_gettid: return sok(mb_threads_get_tid(h->threads));
+		case NR_getpid: case NR_getppid: return sok(1);
+		case NR_sched_yield: case NR_nanosleep: case NR_clock_nanosleep:
+			return mb_threads_yield(h->threads, &h->context);
+		case NR_wbx_clone: {
+			/* args: (tls/thread_area, child_rsp, child_rip, child_tid, parent_tid*) */
+			long r = mb_threads_spawn(h->threads, h->block, a1, a2, a3, a4, (uint32_t *)a5);
+			return r < 0 ? serr((int)-r) : sok(r);
+		}
+		case NR_exit: return mb_threads_exit(h->threads, &h->context);
+		case NR_futex: {
+			int op = (int)a2 & ~FUTEX_PRIVATE_FLAG;
+			switch (op) {
+				case FUTEX_WAIT: return mb_threads_futex_wait(h->threads, &h->context, a1, (uint32_t)a3);
+				case FUTEX_WAKE: return sok(mb_threads_futex_wake(h->threads, a1, (uint32_t)a3));
+				case FUTEX_REQUEUE: return sok(mb_threads_futex_requeue(h->threads, a1, a5, (uint32_t)a3, (uint32_t)a4));
+				case FUTEX_LOCK_PI: return mb_threads_futex_lock_pi(h->threads, &h->context, a1);
+				case FUTEX_UNLOCK_PI: return mb_threads_futex_unlock_pi(h->threads, &h->context, a1);
+				default: return serr(ENOSYS);
+			}
+		}
+		default:
+			fprintf(stderr, "miniBox: unimplemented syscall %llu\n", (unsigned long long)nr);
+			__builtin_trap();
+			return serr(ENOSYS);
+	}
+}
+
+/* ---- lifecycle ---- */
+
+static void run_proc_if_present(mb_host *h, const char *name) {
+	uintptr_t p = mb_elf_proc_addr(h->elf, name);
+	if (p) mb_call_guest_simple(p, &h->context);
+}
+
+mb_host *mb_host_new(const uint8_t *image, size_t image_len, const char *module_name,
+                     const mb_memory_layout_template *tpl, char *errbuf, size_t errlen) {
+	mb_host *h = (mb_host *)calloc(1, sizeof(mb_host));
+	h->image_len = image_len;
+	h->image = (uint8_t *)malloc(image_len);
+	memcpy(h->image, image, image_len);
+	h->thunks = mb_thunks_new();
+	h->threads = mb_threads_new();
+
+	/* build the layout: elf span (page-expanded), then the fixed + sized areas */
+	mb_range elf = mb_range_align_expand(mb_elf_span(image, image_len));
+	mb_layout *L = &h->layout;
+	uintptr_t end = mb_range_end(elf);
+	#define ADD(field, sz) do { L->field.start = end; L->field.size = mb_align_up(sz); end = mb_range_end(L->field); } while (0)
+	L->elf = elf;
+	ADD(main_thread, 1u << 20); ADD(alt_thread, 1u << 20);
+	ADD(sbrk, tpl->sbrk_size); ADD(sealed, tpl->sealed_size); ADD(invis, tpl->invis_size);
+	ADD(plain, tpl->plain_size); ADD(mmap_arena, tpl->mmap_size);
+	#undef ADD
+	mb_range all = mb_layout_all(L);
+	if (all.start >> 32 != (mb_range_end(all) - 1) >> 32) {
+		snprintf(errbuf, errlen, "HostMemoryLayout must fit into a single 4GiB region");
+		free(h->image); free(h); return NULL;
+	}
+
+	h->block = mb_block_new(all);
+	if (!h->block) { snprintf(errbuf, errlen, "failed to create memory block"); free(h->image); free(h); return NULL; }
+	h->program_break = L->sbrk.start;
+	h->fs = mb_fs_new();
+	mb_context_init(&h->context, L->main_thread.start + L->main_thread.size,
+	                L->alt_thread.start + L->alt_thread.size, dispatch);
+
+	mb_prepare_thread();
+	h->context.host_ptr = (uintptr_t)h;
+	mb_block_activate(h->block);
+	h->active = true;
+
+	if (mb_elf_load(image, image_len, module_name, L, h->block, &h->elf) != 0) {
+		snprintf(errbuf, errlen, "failed to load guest ELF");
+		mb_block_deactivate(h->block); mb_block_free(h->block); mb_fs_free(h->fs);
+		mb_thunks_free(h->thunks); mb_threads_free(h->threads); free(h->image); free(h); return NULL;
+	}
+
+	mb_call_guest_simple(mb_elf_entry(h->elf), &h->context);  /* _start */
+	mb_block_deactivate(h->block); h->active = false;
+	return h;
+}
+
+void mb_host_destroy(mb_host *h) {
+	if (!h) return;
+	if (h->active) mb_block_deactivate(h->block);
+	mb_block_free(h->block); mb_fs_free(h->fs); mb_elf_free(h->elf);
+	mb_thunks_free(h->thunks); mb_threads_free(h->threads); free(h->image); free(h);
+}
+
+void mb_host_activate(mb_host *h) {
+	if (h->active) return;
+	mb_prepare_thread();
+	h->context.host_ptr = (uintptr_t)h;
+	mb_block_activate(h->block);
+	h->active = true;
+}
+void mb_host_deactivate(mb_host *h) {
+	if (!h->active) return;
+	h->context.host_ptr = 0;
+	mb_block_deactivate(h->block);
+	h->active = false;
+}
+
+uintptr_t mb_host_proc_addr(mb_host *h, const char *name) {
+	uintptr_t p = mb_elf_proc_addr(h->elf, name);
+	return p ? mb_thunks_get(h->thunks, p, &h->context) : 0;
+}
+uintptr_t mb_host_proc_addr_raw(mb_host *h, const char *name) { return mb_elf_proc_addr(h->elf, name); }
+uintptr_t mb_host_callin_addr(mb_host *h, uintptr_t ptr) { return mb_thunks_get(h->thunks, ptr, &h->context); }
+
+int mb_host_callback_addr(mb_host *h, mb_external_callback cb, uintptr_t slot, uintptr_t *out) {
+	if (slot >= MB_CALLBACK_SLOTS) return -1;
+	h->context.extcall_slots[slot] = cb;
+	*out = mb_get_callback_ptr(slot);
+	return 0;
+}
+
+int mb_host_seal(mb_host *h, char *errbuf, size_t errlen) {
+	if (h->sealed) { snprintf(errbuf, errlen, "Already sealed!"); return -1; }
+	bool was_active = h->active;
+	mb_host_activate(h);
+	run_proc_if_present(h, "co_clean");
+	run_proc_if_present(h, "ecl_seal");
+	mb_elf_seal(h->elf, h->block);
+	if (mb_block_seal(h->block) != 0) { snprintf(errbuf, errlen, "seal failed"); return -1; }
+	if (!was_active) mb_host_deactivate(h);
+	h->sealed = true;
+	return 0;
+}
+
+int mb_host_mount(mb_host *h, const char *name, const uint8_t *data, size_t len, bool writable) {
+	return mb_fs_mount(h->fs, name, data, len, writable);
+}
+int mb_host_unmount(mb_host *h, const char *name, uint8_t **out, size_t *outlen) {
+	return mb_fs_unmount(h->fs, name, out, outlen);
+}
+
+size_t  mb_host_page_len(mb_host *h) { return mb_block_page_len(h->block); }
+uint8_t mb_host_page_info(mb_host *h, size_t i) { return mb_block_page_info(h->block, i); }
+
+/* ---- top-level save/load (structure per MACHINE-SPEC.md section 6) ---- */
+
+static const char SAVE_START[] = "ActivatedWaterboxHost_v1";
+/* SAVE_END: the reference's upside-down "ActivatedWaterboxHost" (UTF-8 bytes) */
+static const char SAVE_END[] = "\xcb\x87soHxoq\xc9\xaf\xc7\x9d\xca\x87\xc9\x90Mp\xc7\x9d\xca\x87\xc9\x90\xca\x8c\xe1\xb4\x89\xca\x87\xc9\x94\xe2\x88\x80";
+
+static int w_all(mb_write_cb w, uintptr_t ud, const void *d, size_t n) { return w(ud, (const uint8_t *)d, n) < 0 ? -1 : 0; }
+static int r_all(mb_read_cb r, uintptr_t ud, void *d, size_t n) {
+	uint8_t *p = (uint8_t *)d;
+	while (n) { intptr_t g = r(ud, p, n); if (g <= 0) return -1; p += g; n -= (size_t)g; }
+	return 0;
+}
+
+int mb_host_save_state(mb_host *h, mb_write_cb w, uintptr_t ud, char *errbuf, size_t errlen) {
+	if (!h->sealed) { snprintf(errbuf, errlen, "Not sealed!"); return -1; }
+	bool was_active = h->active; mb_host_activate(h);
+	int rc = -1;
+	/* Phase 1 FS is fixed (mounted files only, no per-file dynamic state churn):
+	 * the memory block carries all mutable machine state. FS/thread records are
+	 * placeholders matching the format's magic framing. */
+	if (w_all(w, ud, SAVE_START, sizeof(SAVE_START)-1)) goto done;
+	if (w_all(w, ud, "FileSystem", 10) || w_all(w, ud, "FileSystemEnd", 13)) goto done;
+	if (w_all(w, ud, &h->program_break, sizeof(h->program_break))) goto done;
+	if (w_all(w, ud, "ElfLoader", 9) || w_all(w, ud, mb_elf_hash(h->elf), 32)) goto done;
+	if (mb_block_save_state(h->block, w, ud) != 0) goto done;
+	if (mb_threads_save(h->threads, &h->context, w, ud) != 0) goto done;
+	if (w_all(w, ud, SAVE_END, sizeof(SAVE_END)-1)) goto done;
+	rc = 0;
+done:
+	if (!was_active) mb_host_deactivate(h);
+	if (rc) snprintf(errbuf, errlen, "save_state write failed");
+	return rc;
+}
+
+static int expect(mb_read_cb r, uintptr_t ud, const char *magic, size_t n) {
+	char buf[64]; if (n > sizeof(buf)) return -1;
+	if (r_all(r, ud, buf, n)) return -1;
+	return memcmp(buf, magic, n) == 0 ? 0 : -1;
+}
+
+int mb_host_load_state(mb_host *h, mb_read_cb r, uintptr_t ud, char *errbuf, size_t errlen) {
+	if (!h->sealed) { snprintf(errbuf, errlen, "Not sealed!"); return -1; }
+	bool was_active = h->active; mb_host_activate(h);
+	int rc = -1;
+	uint8_t elfhash[32];
+	if (expect(r, ud, SAVE_START, sizeof(SAVE_START)-1)) { snprintf(errbuf, errlen, "bad start magic"); goto done; }
+	if (expect(r, ud, "FileSystem", 10) || expect(r, ud, "FileSystemEnd", 13)) { snprintf(errbuf, errlen, "bad fs magic"); goto done; }
+	if (r_all(r, ud, &h->program_break, sizeof(h->program_break))) goto done;
+	if (expect(r, ud, "ElfLoader", 9)) { snprintf(errbuf, errlen, "bad elf magic"); goto done; }
+	if (r_all(r, ud, elfhash, 32)) goto done;
+	if (memcmp(elfhash, mb_elf_hash(h->elf), 32) != 0) { snprintf(errbuf, errlen, "ELF hash mismatch"); goto done; }
+	if (mb_block_load_state(h->block, r, ud) != 0) { snprintf(errbuf, errlen, "memory block load failed"); goto done; }
+	if (mb_threads_load(h->threads, &h->context, r, ud) != 0) { snprintf(errbuf, errlen, "thread set load failed"); goto done; }
+	if (expect(r, ud, SAVE_END, sizeof(SAVE_END)-1)) { snprintf(errbuf, errlen, "bad end magic"); goto done; }
+	rc = 0;
+done:
+	if (!was_active) mb_host_deactivate(h);
+	return rc;
+}
