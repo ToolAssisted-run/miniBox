@@ -3,6 +3,7 @@
  * port of runtime/src/host.rs (Linux single-thread subset). */
 #define _GNU_SOURCE
 #include "minibox_internal.h"
+#include "minibox_threads.h"
 #include "minibox.h"
 #include <errno.h>
 #include <stdlib.h>
@@ -19,6 +20,7 @@ struct mb_host {
 	uint8_t *image; size_t image_len;
 	mb_context context;
 	mb_thunks *thunks;
+	mb_threads *threads;
 };
 
 /* ---- syscall numbers (x86-64) ---- */
@@ -38,6 +40,12 @@ enum {
 #define PROT_READ 1
 #define PROT_WRITE 2
 #define PROT_EXEC 4
+#define FUTEX_PRIVATE_FLAG 128
+#define FUTEX_WAIT 0
+#define FUTEX_WAKE 1
+#define FUTEX_REQUEUE 3
+#define FUTEX_LOCK_PI 6
+#define FUTEX_UNLOCK_PI 7
 
 static uintptr_t serr(int e) { return (uintptr_t)(intptr_t)(-e); }  /* -errno as usize */
 static uintptr_t sok(long v) { return (uintptr_t)v; }
@@ -54,7 +62,6 @@ static mb_prot arg_to_prot(uintptr_t a, bool *bad) {
 /* The guest syscall dispatcher (sysv64; installed in the Context). */
 static uintptr_t dispatch(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4,
                           uintptr_t a5, uintptr_t a6, uintptr_t nr, void *hp) {
-	(void)a5;
 	mb_host *h = (mb_host *)hp;
 	(void)a6;
 	switch (nr) {
@@ -123,12 +130,28 @@ static uintptr_t dispatch(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4
 		}
 		case NR_rt_sigprocmask: return sok(0);
 		case NR_set_thread_area: return serr(ENOSYS);   /* musl handles in userspace */
-		case NR_set_tid_address: return sok(1);
-		case NR_gettid: return sok(1);
+		case NR_set_tid_address: return sok(mb_threads_set_tid_address(h->threads, a1));
+		case NR_gettid: return sok(mb_threads_get_tid(h->threads));
 		case NR_getpid: case NR_getppid: return sok(1);
-		case NR_sched_yield: case NR_nanosleep: case NR_clock_nanosleep: return sok(0); /* single thread: yields are no-ops */
-		/* Phase 1 is single-threaded: threads/futex/clone are out of scope. */
-		case NR_futex: case NR_wbx_clone: case NR_exit:
+		case NR_sched_yield: case NR_nanosleep: case NR_clock_nanosleep:
+			return mb_threads_yield(h->threads, &h->context);
+		case NR_wbx_clone: {
+			/* args: (tls/thread_area, child_rsp, child_rip, child_tid, parent_tid*) */
+			long r = mb_threads_spawn(h->threads, h->block, a1, a2, a3, a4, (uint32_t *)a5);
+			return r < 0 ? serr((int)-r) : sok(r);
+		}
+		case NR_exit: return mb_threads_exit(h->threads, &h->context);
+		case NR_futex: {
+			int op = (int)a2 & ~FUTEX_PRIVATE_FLAG;
+			switch (op) {
+				case FUTEX_WAIT: return mb_threads_futex_wait(h->threads, &h->context, a1, (uint32_t)a3);
+				case FUTEX_WAKE: return sok(mb_threads_futex_wake(h->threads, a1, (uint32_t)a3));
+				case FUTEX_REQUEUE: return sok(mb_threads_futex_requeue(h->threads, a1, a5, (uint32_t)a3, (uint32_t)a4));
+				case FUTEX_LOCK_PI: return mb_threads_futex_lock_pi(h->threads, &h->context, a1);
+				case FUTEX_UNLOCK_PI: return mb_threads_futex_unlock_pi(h->threads, &h->context, a1);
+				default: return serr(ENOSYS);
+			}
+		}
 		default:
 			fprintf(stderr, "miniBox: unimplemented syscall %llu\n", (unsigned long long)nr);
 			__builtin_trap();
@@ -150,6 +173,7 @@ mb_host *mb_host_new(const uint8_t *image, size_t image_len, const char *module_
 	h->image = (uint8_t *)malloc(image_len);
 	memcpy(h->image, image, image_len);
 	h->thunks = mb_thunks_new();
+	h->threads = mb_threads_new();
 
 	/* build the layout: elf span (page-expanded), then the fixed + sized areas */
 	mb_range elf = mb_range_align_expand(mb_elf_span(image, image_len));
@@ -182,7 +206,7 @@ mb_host *mb_host_new(const uint8_t *image, size_t image_len, const char *module_
 	if (mb_elf_load(image, image_len, module_name, L, h->block, &h->elf) != 0) {
 		snprintf(errbuf, errlen, "failed to load guest ELF");
 		mb_block_deactivate(h->block); mb_block_free(h->block); mb_fs_free(h->fs);
-		mb_thunks_free(h->thunks); free(h->image); free(h); return NULL;
+		mb_thunks_free(h->thunks); mb_threads_free(h->threads); free(h->image); free(h); return NULL;
 	}
 
 	mb_call_guest_simple(mb_elf_entry(h->elf), &h->context);  /* _start */
@@ -194,7 +218,7 @@ void mb_host_destroy(mb_host *h) {
 	if (!h) return;
 	if (h->active) mb_block_deactivate(h->block);
 	mb_block_free(h->block); mb_fs_free(h->fs); mb_elf_free(h->elf);
-	mb_thunks_free(h->thunks); free(h->image); free(h);
+	mb_thunks_free(h->thunks); mb_threads_free(h->threads); free(h->image); free(h);
 }
 
 void mb_host_activate(mb_host *h) {
@@ -273,7 +297,7 @@ int mb_host_save_state(mb_host *h, mb_write_cb w, uintptr_t ud, char *errbuf, si
 	if (w_all(w, ud, &h->program_break, sizeof(h->program_break))) goto done;
 	if (w_all(w, ud, "ElfLoader", 9) || w_all(w, ud, mb_elf_hash(h->elf), 32)) goto done;
 	if (mb_block_save_state(h->block, w, ud) != 0) goto done;
-	if (w_all(w, ud, "GuestThreadSet", 14) || w_all(w, ud, "GuestThreadSet", 14)) goto done;
+	if (mb_threads_save(h->threads, &h->context, w, ud) != 0) goto done;
 	if (w_all(w, ud, SAVE_END, sizeof(SAVE_END)-1)) goto done;
 	rc = 0;
 done:
@@ -300,7 +324,7 @@ int mb_host_load_state(mb_host *h, mb_read_cb r, uintptr_t ud, char *errbuf, siz
 	if (r_all(r, ud, elfhash, 32)) goto done;
 	if (memcmp(elfhash, mb_elf_hash(h->elf), 32) != 0) { snprintf(errbuf, errlen, "ELF hash mismatch"); goto done; }
 	if (mb_block_load_state(h->block, r, ud) != 0) { snprintf(errbuf, errlen, "memory block load failed"); goto done; }
-	if (expect(r, ud, "GuestThreadSet", 14) || expect(r, ud, "GuestThreadSet", 14)) { snprintf(errbuf, errlen, "bad thread magic"); goto done; }
+	if (mb_threads_load(h->threads, &h->context, r, ud) != 0) { snprintf(errbuf, errlen, "thread set load failed"); goto done; }
 	if (expect(r, ud, SAVE_END, sizeof(SAVE_END)-1)) { snprintf(errbuf, errlen, "bad end magic"); goto done; }
 	rc = 0;
 done:

@@ -18,6 +18,7 @@ minibox_host_sources = files(
   'src/elf.c',
   'src/fs.c',
   'src/host.c',
+  'src/threading.c',
   'src/cinterface.c',
 )
 

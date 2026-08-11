@@ -11,6 +11,18 @@ here="$(cd "$(dirname "$0")" && pwd)"
 export SYSROOT="$here/sysroot"
 export CC="${CC:-gcc}"
 
+# Apply our musl patches (idempotent) before building. The submodule stays
+# pinned to pristine upstream; these are the miniBox-specific fixes.
+for p in "$here"/patches/*.patch; do
+	[ -e "$p" ] || continue
+	if git -C "$here/musl" apply --reverse --check "$p" >/dev/null 2>&1; then
+		echo "patch already applied: $(basename "$p")"
+	else
+		echo "applying patch: $(basename "$p")"
+		git -C "$here/musl" apply "$p"
+	fi
+done
+
 if [ ! -f "$SYSROOT/lib/libc.a" ]; then
 	echo "building musl (CC=$CC) -> $SYSROOT ..."
 	( cd "$here/musl" && ./wbox_configure.sh && ./wbox_build.sh )
