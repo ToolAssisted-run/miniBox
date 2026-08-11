@@ -1,0 +1,6 @@
+runtime/target/
+toolchain/sysroot/
+toolchain/llvm-project/
+toolchain/*/obj/
+*.wbx
+*.wbx.zst

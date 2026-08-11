@@ -1,0 +1,3 @@
+[submodule "toolchain/musl"]
+	path = toolchain/musl
+	url = https://github.com/nattthebear/musl.git
