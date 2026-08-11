@@ -28,9 +28,10 @@ ATTRIBUTION.md for the full component-by-component breakdown.
   Rust waterboxhost (the historical reference, in the BizHawk repo and this
   repo's git history); no Rust or nightly toolchain is needed.
 - `source/guest/` - miniBox's guest build machinery (the core-author kit):
-  `linkscript.T` (fixed base 0x36f00000000, .sealed/.invis sections),
-  and `build-toolchain.sh` + meson glue (`meson.build`,
-  `waterbox-guest.ini.in`) that drive the `extern/` libraries below.
+  `linkscript.T` (fixed base 0x36f00000000, .sealed/.invis sections) and the
+  meson glue (`meson.build`, `waterbox-guest.ini.in`) that builds the guest
+  toolchain from the `extern/` libraries below. The musl bootstrap itself
+  lives in the top-level `meson.build`; there is no separate build script.
 - `extern/` - external/vendored libraries: `musl` (the guest libc, vendored
   from nattthebear/musl @ 2063abc4 with one local fix baked in - see
   ATTRIBUTION.md), `emulibc` (BizHawk's guest support lib: ECL_* macros,
@@ -38,16 +39,19 @@ ATTRIBUTION.md for the full component-by-component breakdown.
   cothreads), `libcxx` (LLVM sysroot build scripts for C++ guests).
 - `tests/` - the test suite (host unit tests + guest system tests).
 - `docs/` - `MACHINE-SPEC.md` (the frozen machine contract) and debugging notes.
-- `build/` - all build output (gitignored): `build/sysroot` (the guest
-  toolchain install), `build/meson-linux`, `build/meson-windows`.
+- `build/` - all build output (gitignored): `build/meson-linux` (which contains
+  the meson-built guest toolchain under `guest-sysroot/`) and
+  `build/meson-windows`.
 
 ## Building
 
+The guest toolchain (musl) is built by meson as part of the graph - no separate
+bootstrap step.
+
 ```
-source/guest/build-toolchain.sh          # bootstrap the guest toolchain -> build/sysroot
-meson setup build/meson-linux            # the host + tests
+meson setup build/meson-linux            # builds musl, the host, and the guests
 meson test  -C build/meson-linux
-# Windows host DLL (cross-compile check):
+# Windows host DLL (cross-compile check; guests are skipped):
 meson setup   build/meson-windows --cross-file source/host/mingw-w64.ini
 ninja compile -C build/meson-windows
 ```

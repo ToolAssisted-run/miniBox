@@ -2,21 +2,15 @@
 #
 # Two tiers:
 #  - host unit tests: link the host statically, no guest needed (always run).
-#  - system tests: require a gcc-built guest .wbx, which needs the guest
-#    toolchain (musl+emulibc). Built via custom_target when the toolchain has
-#    been bootstrapped; skipped with a notice otherwise.
+#  - system tests: run a gcc-built guest .wbx through the host. The guest
+#    toolchain (musl + emulibc) is built by meson itself, so these run whenever
+#    the guest toolchain is built - i.e. native builds, not cross builds.
 
 # ---- host unit tests ----
 subdir('unit')
 
-# ---- guest system tests (need the bootstrapped musl; emulibc.o is meson-built) ----
-fs = import('fs')
-musl_gcc = meson.project_source_root() / 'build' / 'sysroot' / 'bin' / 'musl-gcc'
-
-if fs.exists(musl_gcc)
+# ---- guest system tests (musl+emulibc are meson-built; native only) ----
+if build_guest_toolchain
   subdir('conformance')
   subdir('threads')
-else
-  message('Guest toolchain not bootstrapped (build/sysroot/bin/musl-gcc ' +
-          'missing); skipping guest system tests. Run source/guest/build-toolchain.sh')
 endif
