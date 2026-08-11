@@ -6,7 +6,7 @@
 #
 # Phase 1: Linux x86-64, single guest thread, C guests.
 
-minibox_host_inc = include_directories('include')
+minibox_host_inc = include_directories('.')
 
 minibox_host_sources = files(
   'sha256.c',
@@ -43,7 +43,7 @@ libminiboxhost = both_libraries(
   install: true,
 )
 
-install_headers('include/minibox.h')
+install_headers('minibox.h')
 
 minibox_host_dep = declare_dependency(
   link_with: libminiboxhost.get_shared_lib(),

@@ -17,7 +17,7 @@ the BizHawk team and contributors, MIT License. This covers:
 - `source/host/` - the sandbox host, a from-scratch C port of BizHawk's Rust
   `waterbox/waterboxhost`. (The Rust original was carried in this repo's early
   history as `runtime/` and has since been removed; it lives on in BizHawk.)
-- `source/host/src/interop_bin.c` embeds `interop.bin` - the stack-switch blob
+- `source/host/interop_bin.c` embeds `interop.bin` - the stack-switch blob
   assembled from BizHawk's `waterbox/waterboxhost/src/context/interop.s`.
 - `extern/emulibc/` - the guest support library (ECL_* macros, allocators,
   `__wbxsysinfo`).
