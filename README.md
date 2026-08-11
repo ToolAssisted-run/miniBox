@@ -47,10 +47,16 @@ compile their emulation source into a platform-neutral `.wbx`.
 ## Roadmap
 
 1. C/C++ port of the runtime (drops the nightly-Rust requirement; validated
-   bit-exactly against the Rust reference over shared guests and inputs).
-   Phase 1: memory block + dirty tracking + savestates + ELF load + syscall
-   core (enough for single-threaded C guests, e.g. miniHawk's synth core).
-   Phase 2: green threads/futex, VFS extras, cothread support (real cores).
+   against the Rust reference over shared guests and inputs).
+   Phase 1 DONE (runtime-c/): memory block + dirty tracking + savestates +
+   ELF load + interop/thunks + VFS + the syscall core; links as
+   libminiboxhost.so (all 16 wbx_* exports, no external deps). A gcc-built
+   conformance guest (tests/conformance/) runs end-to-end - Init, guest
+   syscalls, sealed/invisible memory, seal, and a savestate round-trip all
+   pass. GCC-only: no clang/lld/LLVM needed for pure-C guests.
+   Phase 2 (pending): green threads/futex/clone, the Windows PAL (fault
+   handler + guard pages) and the MsHostSysVGuest ABI adapter, cothread
+   support - for multi-threaded and C++ real cores.
 2. Guest ABI v1 + conformance tests, runnable entirely without miniHawk.
 3. Machine specification document - the frozen contract both implementations
    are held to.
