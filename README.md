@@ -53,6 +53,9 @@ bootstrap step.
 ```
 meson setup build/meson-linux            # builds musl, the host, and the guests
 meson test  -C build/meson-linux
+# C++ cores (optional): also builds libstdc++ for the guest (~75 CPU-seconds,
+# fetches the GCC source matching the host compiler; see docs/ATTRIBUTION.md)
+meson setup build/meson-cpp -Dguest_cpp=true
 # Windows host DLL (cross-compile check; guests are skipped):
 meson setup   build/meson-windows --cross-file source/host/mingw-w64.ini
 ninja compile -C build/meson-windows

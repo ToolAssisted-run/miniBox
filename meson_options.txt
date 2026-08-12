@@ -1,0 +1,7 @@
+# Build the C++ guest toolchain (libstdc++ retargeted to the guest musl) so cores
+# written in C++ can be compiled to .wbx. Off by default: pure-C cores do not need
+# it, and it fetches the GCC sources matching the host compiler (~84MB) to build
+# libstdc++ with the waterbox flags. See docs/ATTRIBUTION.md for its licensing
+# (GPL-3 WITH GCC Runtime Library Exception).
+option('guest_cpp', type: 'boolean', value: false,
+       description: 'build the C++ guest toolchain (libstdc++ for the guest)')

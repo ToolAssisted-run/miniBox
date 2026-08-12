@@ -50,6 +50,44 @@ waterbox_emulibc_ct = custom_target('emulibc.c.o',
 )
 waterbox_emulibc_obj = waterbox_emulibc_ct
 
+# ---------------------------------------------------------------------------
+# C++ guests (-Dguest_cpp=true). The link recipe below is not obvious and is
+# exported so cores do not have to rediscover it:
+#   * library ORDER matters: -lstdc++ -lgcc -lgcc_eh -lc, with libc LAST.
+#   * -Wl,--no-relax: the large code model otherwise fails to convert GOTPCREL.
+#   * -Wl,-u,pthread_*: libgcc_eh references these WEAKLY, and weak refs do not
+#     pull members out of an archive - they would stay undefined at address 0,
+#     and a PC-relative reloc from the 0x36f00000000 base cannot reach it.
+#   * cxxglue.o supplies __dso_handle and _dl_find_object (see cxxglue.c).
+# Cores compile with -fno-exceptions -fno-rtti by default (Tier 2: STL, no EH);
+# exceptions would additionally need the unwinder wired at the fixed base.
+# ---------------------------------------------------------------------------
+if waterbox_cpp_guest
+  waterbox_musl_gxx = 'g++'
+  waterbox_guest_cxxflags = waterbox_guest_cflags + [
+    '-specs', waterbox_sysroot / 'lib' / 'musl-gcc.specs',
+    '-I' + waterbox_gxx_include,
+    '-I' + waterbox_gxx_include / 'x86_64-linux-musl',
+    '-fno-exceptions', '-fno-rtti',
+  ]
+  waterbox_guest_cxx_ldflags = [
+    '-static', '-no-pie', '-Wl,--eh-frame-hdr,-O2,--no-relax',
+    '-T', waterbox_linkscript,
+    '-Wl,-u,pthread_once', '-Wl,-u,pthread_cond_wait',
+    '-Wl,-u,pthread_cond_broadcast', '-Wl,-u,pthread_key_create',
+  ]
+  # Linked AFTER the objects; order is load-bearing (see above).
+  waterbox_guest_cxx_libs = [
+    '-L' + waterbox_sysroot / 'lib', '-lstdc++', '-lgcc', '-lgcc_eh', '-lc',
+  ]
+  waterbox_cxxglue_obj = custom_target('cxxglue.c.o',
+    input: 'cxxglue.c',
+    output: 'cxxglue.c.o',
+    command: [waterbox_musl_gcc, '-c', waterbox_guest_cflags, '-std=c11', '-o', '@OUTPUT@', '@INPUT@'],
+    depends: waterbox_libstdcxx,
+  )
+endif
+
 # Emit a cross-file for consumers who want to build the guest as a cross project.
 configure_file(
   input: 'waterbox-guest.ini.in',

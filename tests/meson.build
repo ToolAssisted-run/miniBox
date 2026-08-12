@@ -13,4 +13,8 @@ subdir('unit')
 if build_guest_toolchain
   subdir('conformance')
   subdir('threads')
+  # C++ guests need the (optional) C++ guest toolchain
+  if waterbox_cpp_guest
+    subdir('cpp')
+  endif
 endif

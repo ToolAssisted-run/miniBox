@@ -66,6 +66,25 @@ uses it to parse the host's settings channel for C cores.
 
 ## Components fetched or built at build time (NOT vendored here)
 
+### GNU libstdc++ - GPL-3.0 WITH GCC Runtime Library Exception
+
+With `-Dguest_cpp=true`, the build fetches the GCC source matching the host
+compiler and builds **only** `libstdc++-v3` for the guest (retargeted to the guest
+musl and compiled with the waterbox flags, since no prebuilt C++ standard library
+can link at the fixed guest base). Nothing from GCC is vendored in this
+repository; the source tree is deleted after the library is installed.
+
+libstdc++ is Copyright (c) the Free Software Foundation, licensed **GPL-3.0 with
+the GCC Runtime Library Exception**. That exception exists precisely for this use:
+it permits linking the runtime into programs under any license, provided they are
+compiled with a compliant compiler (GCC, as here). So a C++ core linking
+libstdc++ does **not** become GPL. This is the only GPL-family component miniBox
+touches; everything else is MIT / public domain / Apache-2.0. Full text ships in
+the GCC sources (`COPYING3`, `COPYING.RUNTIME`).
+
+A C++ core that wants to avoid it entirely can stay freestanding (no STL,
+`-fno-exceptions -fno-rtti -nostdlib++`), which needs no C++ runtime at all.
+
 ### LLVM libc++ / libc++abi / libunwind / compiler-rt - Apache-2.0 WITH LLVM exception
 
 `extern/libcxx/*.sh` sparse-clone the LLVM project

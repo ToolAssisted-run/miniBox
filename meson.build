@@ -63,6 +63,71 @@ if build_guest_toolchain
     command: [find_program('make'), '-j', 'install'],
     console: true,
   )
+
+  # -------------------------------------------------------------------------
+  # C++ guest toolchain (-Dguest_cpp=true): libstdc++ retargeted to the guest.
+  #
+  # No prebuilt C++ stdlib can ever work here: it must be built against the guest
+  # musl AND with the waterbox flags (-mcmodel=large -fno-pic), or it cannot link
+  # at the fixed guest base. libstdc++ supports this directly - its configure.host
+  # maps linux-musl* to os/generic, avoiding the glibc coupling.
+  #
+  # libstdc++ must match the host GCC, so the matching source is fetched (~84MB)
+  # and extracted transiently; the whole build is ~75 CPU-seconds and lands in
+  # guest-sysroot alongside musl. Off by default (-Dguest_cpp): pure-C cores do
+  # not need it. CI should cache guest-sysroot keyed on the gcc version + the
+  # musl commit + these flags.
+  #
+  # This one target shells out (via sh -c) because autotools writes into its
+  # working directory, and a custom_target's cwd is the build root, which musl
+  # already owns. It is still fully meson-driven - no manual step, no script file.
+  # -------------------------------------------------------------------------
+  waterbox_cpp_guest = get_option('guest_cpp')
+  if waterbox_cpp_guest
+    gcc_version = run_command('gcc', '-dumpfullversion', check: true).stdout().strip()
+    gcc_url = 'https://ftp.gnu.org/gnu/gcc/gcc-@0@/gcc-@0@.tar.xz'.format(gcc_version)
+    cpp_dir = meson.current_build_dir() / 'cpp-toolchain'
+    gcc_srcdir = cpp_dir / 'src' / 'gcc-' + gcc_version
+    musl_specs = waterbox_sysroot / 'lib' / 'musl-gcc.specs'
+    # Same frozen guest flags the .wbx itself is compiled with.
+    wbx_flags = '-mcmodel=large -mstack-protector-guard=global -fno-pic -fno-pie -fcf-protection=none -O2'
+
+    waterbox_libstdcxx = custom_target('libstdcxx',
+      input: waterbox_musl_gcc,           # needs the guest musl headers/libs first
+      output: 'libstdcxx-installed.stamp',
+      console: true,
+      # NOTE: no backslashes anywhere below - meson mangles them inside strings,
+      # so every command must fit on one line.
+      command: [find_program('sh'), '-c', '''
+set -e
+D=@0@
+V=@1@
+mkdir -p $D/src $D/build $D/gthr-inc
+# the matching GCC source, fetched once
+if [ ! -f $D/gcc-$V.tar.xz ]; then curl -sSL -o $D/gcc-$V.tar.xz.part @2@ && mv $D/gcc-$V.tar.xz.part $D/gcc-$V.tar.xz; fi
+# Extract the whole tree: libstdc++-v3 reaches into enough sibling directories
+# (config-ml.in, libbacktrace, gcc/BASE-VER, include, ...) that a curated member
+# list is fragile and would rot across GCC versions. The tree is transient - it
+# is deleted after install below, leaving only the tarball and the sysroot.
+if [ ! -d $D/src/gcc-$V/libstdc++-v3 ]; then tar xf $D/gcc-$V.tar.xz -C $D/src; fi
+# the gthreads configure test needs gthr-default.h, which configure itself only
+# generates at the END - pre-seed it, else threads come out off and the C++20
+# tzdb.cc build fails ("mutex does not name a type").
+echo '#include "gthr-posix.h"' > $D/gthr-inc/gthr-default.h
+cd $D/build
+if [ ! -f Makefile ]; then CC="gcc -specs @3@" CXX="g++ -specs @3@" CFLAGS="@4@ -I$D/gthr-inc" CXXFLAGS="@4@ -I$D/gthr-inc" $D/src/gcc-$V/libstdc++-v3/configure --host=x86_64-linux-musl --build=x86_64-pc-linux-gnu --prefix=@5@ --disable-shared --enable-static --disable-multilib --disable-libstdcxx-pch --disable-nls; fi
+make -j"$(nproc)"
+make install
+# everything needed now lives in the sysroot; reclaim the ~1.1GB source tree and
+# the build tree (the tarball is kept so a rebuild does not re-download)
+cd $D
+rm -rf $D/src $D/build
+touch @6@
+'''.format(cpp_dir, gcc_version, gcc_url, musl_specs, wbx_flags, waterbox_sysroot,
+           meson.current_build_dir() / 'libstdcxx-installed.stamp')],
+    )
+    waterbox_gxx_include = waterbox_sysroot / 'include' / 'c++' / gcc_version
+  endif
 endif
 
 subdir('source/guest')   # exposes the waterbox_guest_* variables (guest .wbx build)
