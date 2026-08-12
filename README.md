@@ -84,10 +84,12 @@ frontend's OS-dependent artifacts. Core authors use `source/guest/` (with the
    Phase 2 IN PROGRESS: green threads/futex/clone DONE (threading.c;
    cooperative scheduler, futex WAIT/WAKE/REQUEUE/PI, clone, thread-set
    savestate) - validated with a pthreaded guest (mutex + condvar + join +
-   savestate). Remaining: the Windows PAL (VEH fault handler + guard-page
-   stack tracking + CreateFileMapping) and the MsHostSysVGuest win64<->sysv64
-   ABI adapter - written from the Rust reference but only runtime-validatable
-   on Windows; cothread support for C++ cores.
+   savestate). The Windows PAL (VEH fault handler + guard-page stack tracking +
+   CreateFileMapping) and the MsHostSysVGuest win64<->sysv64 ABI adapter are
+   written from the Rust reference and now runtime-tested: CI cross-builds the
+   unit tests and runs them both under wine and on a real Windows runner (214
+   checks). C++ guests are supported via -Dguest_cpp (libstdc++ retargeted to
+   the guest); cothread support for C++ cores is still outstanding.
 2. Guest ABI v1 + conformance tests, runnable entirely without miniHawk.
 3. Machine specification document - the frozen contract both implementations
    are held to.

@@ -77,7 +77,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends meson ninja-build build-essential gcc-mingw-w64-x86-64
+          sudo apt-get install -y --no-install-recommends meson ninja-build build-essential gcc-mingw-w64-x86-64 wine64
 
       # Cross builds skip the guest toolchain and guest tests by design: a guest
       # is a fake-machine target built with the host compiler. The host itself,
@@ -88,6 +88,25 @@ jobs:
 
       - name: Build
         run: meson compile -C build/ci-win
+
+      # Fast smoke test of the Windows PAL without waiting for a Windows runner.
+      # wine is NOT Windows - it reimplements the Win32 API - so a pass here is
+      # good evidence but not authoritative; the windows-test job below is. A
+      # failure here is still worth investigating: these tests drive the VEH
+      # fault handler, guard-page stack tracking and the CreateFileMapping mirror
+      # mapping (146 + 28 checks in memblock/savestate alone).
+      - name: Run unit tests under wine
+        env:
+          WINEDEBUG: '-all'
+          WINEPREFIX: ${{ runner.temp }}/wineprefix
+        run: |
+          wineboot --init >/dev/null 2>&1 || true
+          failed=0
+          for exe in build/ci-win/tests/unit/*.exe; do
+            echo "== $(basename "$exe")"
+            wine "$exe" || failed=1
+          done
+          exit $failed
 
       - name: Stage Windows artifacts
         run: |
