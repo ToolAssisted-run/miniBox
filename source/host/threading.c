@@ -155,7 +155,7 @@ mb_sword mb_threads_spawn(mb_threads *t, mb_block *b, uintptr_t thread_area,
 	insert_thread(t, g);
 	t->next_tid++;
 	TDBG("spawn tid=%u rip=%lx rsp=%lx\n",tid,(unsigned long)guest_rip,(unsigned long)(guest_rsp-16));
-	return (long)tid;
+	return (mb_sword)tid;
 }
 
 uintptr_t mb_threads_exit(mb_threads *t, mb_context *c) {

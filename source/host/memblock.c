@@ -243,10 +243,10 @@ mb_sword mb_block_mmap(mb_block *b, mb_range addr, mb_prot prot, mb_range arena,
 		size_t ps = find_free_pages(b, as, acount, addr.size >> MB_PAGESHIFT);
 		if (ps == (size_t)-1) return -ENOMEM;
 		set_protections(b, ps, addr.size >> MB_PAGESHIFT, prot_status(prot));
-		return (long)(b->addr.start + (ps << MB_PAGESHIFT));
+		return (mb_sword)(b->addr.start + (ps << MB_PAGESHIFT));
 	} else {
 		int r = mb_block_mmap_fixed(b, addr, prot, no_replace);
-		return r != 0 ? r : (long)addr.start;
+		return r != 0 ? r : (mb_sword)addr.start;
 	}
 }
 
@@ -303,13 +303,13 @@ mb_sword mb_block_mremap(mb_block *b, mb_range addr, uintptr_t new_size, mb_rang
 		for (size_t i = ps + pcount; i < fs + fcount; i++)
 			if (b->pages[i].status != MB_ST_FREE) return -EEXIST;
 		set_protections(b, ps + pcount, fcount - pcount, b->pages[ps].status);
-		return (long)addr.start;
+		return (mb_sword)addr.start;
 	} else {
 		for (size_t i = ps; i < ps + pcount; i++)
 			if (b->pages[i].status == MB_ST_FREE) return -EINVAL;
 		mb_range tail = { addr.start + new_size, addr.size - new_size };
 		int r = munmap_impl(b, tail, false);
-		return r != 0 ? r : (long)addr.start;
+		return r != 0 ? r : (mb_sword)addr.start;
 	}
 }
 

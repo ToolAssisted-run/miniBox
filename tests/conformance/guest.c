@@ -41,6 +41,20 @@ ECL_EXPORT int Init(void) {
 	g_heap = (uint8_t *)malloc(4096);   /* exercises brk/sbrk */
 	if (!g_heap) return 0;
 	memset(g_heap, 0, 4096);
+
+	/* A big allocation takes musl past its mmap threshold, so this exercises
+	 * mmap(NULL, ...) - the host picking an address and handing it back. That
+	 * path returned a 32-bit-truncated address on Windows and nothing caught it,
+	 * because every guest here only ever grew the heap with brk. Writing to the
+	 * memory is the point: a truncated address faults immediately. */
+	{
+		const size_t big_size = 300u * 1024u;
+		uint8_t *big = (uint8_t *)malloc(big_size);
+		if (!big) return 0;
+		memset(big, 0xA5, big_size);
+		if (big[0] != 0xA5 || big[big_size - 1] != 0xA5) return 0;
+		free(big);
+	}
 	g_acc = seed;
 	g_step = 0;
 	fprintf(stderr, "conformance guest: Init done (seed=%08x)\n", seed);

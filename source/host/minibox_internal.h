@@ -18,6 +18,8 @@
  * is not a subtle bug: brk returned a truncated break, the guest computed its
  * next break from it, and the process died inside the first file read. */
 typedef intptr_t mb_sword;
+/* If this ever fails, every syscall return is silently losing its top half. */
+typedef char mb_sword_is_64_bit[sizeof(mb_sword) == 8 ? 1 : -1];
 
 
 #define MB_PAGESIZE 0x1000u
