@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: linux (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The default build: host + C guest toolchain (musl) + C guests.
+          - name: c-guests
+            setup_args: ''
+          # Adds the C++ guest toolchain (libstdc++ retargeted to the guest).
+          # Fetches the GCC source matching the runner's compiler, so it is
+          # kept as a separate job rather than slowing the default one.
+          - name: cpp-guests
+            setup_args: '-Dguest_cpp=true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends meson ninja-build build-essential
+
+      - name: Record toolchain versions
+        id: tc
+        run: |
+          echo "gcc=$(gcc -dumpfullversion)" >> "$GITHUB_OUTPUT"
+          gcc --version | head -1
+          meson --version
+
+      # The only slow part of the C++ job is fetching the ~84MB GCC tarball;
+      # libstdc++ itself is ~60 CPU-seconds. Cache the tarball at the exact path
+      # the build looks for it, keyed on the compiler it must match.
+      - name: Cache GCC source tarball
+        if: matrix.name == 'cpp-guests'
+        uses: actions/cache@v4
+        with:
+          path: build/ci/cpp-toolchain/gcc-${{ steps.tc.outputs.gcc }}.tar.xz
+          key: gcc-src-${{ steps.tc.outputs.gcc }}
+
+      - name: Configure
+        run: meson setup build/ci ${{ matrix.setup_args }}
+
+      - name: Build
+        run: meson compile -C build/ci
+
+      - name: Test
+        run: meson test -C build/ci --print-errorlogs
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meson-logs-${{ matrix.name }}
+          path: build/ci/meson-logs/
+
+  windows-cross:
+    name: windows build (mingw-w64 cross)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends meson ninja-build build-essential gcc-mingw-w64-x86-64
+
+      # Cross builds skip the guest toolchain and guest tests by design: a guest
+      # is a fake-machine target built with the host compiler. The host itself,
+      # its unit tests, and the Windows PAL / fault handler / ABI adapter all
+      # build here and are executed by the windows-test job below.
+      - name: Configure (mingw-w64 cross)
+        run: meson setup build/ci-win --cross-file source/host/mingw-w64.ini
+
+      - name: Build
+        run: meson compile -C build/ci-win
+
+      - name: Stage Windows artifacts
+        run: |
+          mkdir -p artifacts
+          cp build/ci-win/source/host/libminiboxhost.dll artifacts/
+          cp build/ci-win/tests/unit/*.exe artifacts/
+          # the unit tests link the host statically, but mingw still needs its
+          # own runtime beside them
+          cp /usr/lib/gcc/x86_64-w64-mingw32/*-posix/libgcc_s_seh-1.dll artifacts/ 2>/dev/null || true
+          cp /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll artifacts/ 2>/dev/null || true
+          ls -l artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: artifacts/
+
+  windows-test:
+    # Runs the cross-built unit tests on a real Windows machine. This is the only
+    # runtime validation the Windows PAL gets - the VEH fault handler, guard-page
+    # stack tracking and CreateFileMapping-based mirror mapping have no Linux
+    # equivalent, so building alone proves very little about them.
+    name: windows unit tests (native run)
+    needs: windows-cross
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: artifacts
+
+      - name: Run unit tests
+        shell: pwsh
+        working-directory: artifacts
+        run: |
+          $failed = 0
+          Get-ChildItem -Filter *.exe | ForEach-Object {
+            Write-Host "== $($_.Name)"
+            & ".\$($_.Name)"
+            if ($LASTEXITCODE -ne 0) { Write-Host "   FAILED ($LASTEXITCODE)"; $failed = 1 }
+          }
+          exit $failed

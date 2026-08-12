@@ -1,5 +1,7 @@
 # miniBox
 
+[![CI](https://github.com/SergioMartin86/miniBox/actions/workflows/ci.yml/badge.svg)](https://github.com/SergioMartin86/miniBox/actions/workflows/ci.yml)
+
 The waterbox for miniHawk: a determinism sandbox in which ALL miniHawk cores
 run (miniHawk is waterbox-only by design - see the miniHawk repository's
 docs/design-principles.md, "THE WATERBOX-ONLY REDESIGN", and
