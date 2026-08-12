@@ -11,9 +11,7 @@ guest_wbx = custom_target('guest.wbx',
   ],
 )
 
-run_guest = executable('run_guest', 'run_guest.c',
-  dependencies: minibox_host_dep,
-)
+# run_guest comes from ../runner (built for every target, cross included)
 test('conformance-guest', run_guest,
   args: [guest_wbx],
   suite: 'system',

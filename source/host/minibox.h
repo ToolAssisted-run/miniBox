@@ -27,7 +27,17 @@ typedef intptr_t (*mb_read_callback)(uintptr_t userdata, uint8_t *data, uintptr_
 /* 0 ok, <0 fail; must write all requested bytes */
 typedef int32_t (*mb_write_callback)(uintptr_t userdata, const uint8_t *data, uintptr_t size);
 /* the allowed shape of any guest<->host callback */
-typedef uintptr_t (*mb_external_callback)(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+/* Called BY THE GUEST through the interop blob, which is always sysv64 - so on a
+ * Windows host this must be declared sysv64 explicitly, or the callback reads
+ * its arguments from win64 registers the guest never set. (Read/write callbacks
+ * passed to wbx_mount_file and friends are called by the HOST and are ordinary
+ * host-ABI functions; only this one crosses the guest boundary.) */
+#if defined(_WIN32) && defined(__GNUC__)
+#define MB_GUEST_ABI __attribute__((sysv_abi))
+#else
+#define MB_GUEST_ABI
+#endif
+typedef uintptr_t (MB_GUEST_ABI *mb_external_callback)(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 
 typedef struct mb_host mb_host;
 

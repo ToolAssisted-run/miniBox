@@ -7,6 +7,7 @@
 #ifndef MINIBOX_INTERNAL_H
 #define MINIBOX_INTERNAL_H
 
+#include "minibox.h"
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -127,10 +128,21 @@ void mb_tripguard_unregister(mb_block *b);
 /* ---- context.c: host<->guest transitions (interop.bin at 0x35f00000000) ---- */
 #define MB_ORG            0x35f00000000ull
 #define MB_CALLBACK_SLOTS 64
+
+/* The interop blob and the guest are ALWAYS sysv64, whatever the host is. On a
+ * Windows host, every function pointer that the blob calls, or that calls into
+ * the blob, therefore has to be declared sysv64 explicitly - the compiler would
+ * otherwise use the win64 ABI and pass arguments in the wrong registers, which
+ * shows up as a page fault the first time a guest actually runs. On Linux this
+ * expands to nothing, since sysv64 is already the default. */
+#ifdef _WIN32
+#define MB_SYSV __attribute__((sysv_abi))
+#else
+#define MB_SYSV
+#endif
 /* Layout synced with BizHawk waterboxhost src/context/interop.s (struc Context). */
-typedef uintptr_t (*mb_syscall_cb)(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4,
+typedef uintptr_t (MB_SYSV *mb_syscall_cb)(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4,
                                    uintptr_t a5, uintptr_t a6, uintptr_t nr, void *host);
-typedef uintptr_t (*mb_external_callback)(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 typedef struct {
 	uintptr_t thread_area, host_rsp, guest_rsp, host_rsp_alt, guest_rsp_alt;
 	mb_syscall_cb dispatch_syscall;

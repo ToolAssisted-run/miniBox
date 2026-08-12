@@ -39,10 +39,12 @@ static uintptr_t log_cb(uintptr_t v, uintptr_t a2, uintptr_t a3, uintptr_t a4, u
 	(void)a2;(void)a3;(void)a4;(void)a5;(void)a6; g_last_log = (uint32_t)v; return 0;
 }
 
-typedef int      (*init_fn)(void);
-typedef uint32_t (*step_fn)(uint32_t);
-typedef uint64_t (*getacc_fn)(void);
-typedef void     (*setcb_fn)(uintptr_t);
+/* The guest is sysv64 whatever the host is; MB_GUEST_ABI (minibox.h) makes that
+ * explicit, which matters on a win64 host and expands to nothing on Linux. */
+typedef int      (MB_GUEST_ABI *init_fn)(void);
+typedef uint32_t (MB_GUEST_ABI *step_fn)(uint32_t);
+typedef uint64_t (MB_GUEST_ABI *getacc_fn)(void);
+typedef void     (MB_GUEST_ABI *setcb_fn)(uintptr_t);
 
 static uintptr_t proc(mb_host *h, const char *name) {
 	mb_return r; wbx_get_proc_addr(h, name, &r);

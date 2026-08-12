@@ -71,7 +71,7 @@ void mb_context_init(mb_context *c, uintptr_t guest_rsp, uintptr_t guest_rsp_alt
 	c->dispatch_syscall = dispatch;
 }
 
-typedef uintptr_t (*call_guest_simple_fn)(uintptr_t entry, mb_context *c);
+typedef uintptr_t (MB_SYSV *call_guest_simple_fn)(uintptr_t entry, mb_context *c);
 
 uintptr_t mb_call_guest_simple(uintptr_t entry, mb_context *c) {
 	call_guest_simple_fn f = (call_guest_simple_fn)CALL_GUEST_SIMPLE_ADDR;

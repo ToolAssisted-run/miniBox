@@ -9,6 +9,13 @@
 # ---- host unit tests ----
 subdir('unit')
 
+# ---- the guest runner ----
+# Built ALWAYS, including cross builds: it needs only the host, and a guest .wbx
+# is OS-independent, so a Linux-built guest can be run through the Windows host.
+# That is the gap this closes - before it, no guest had ever executed on Windows,
+# and the win64<->sysv64 boundary was only unit-tested in isolation.
+subdir('runner')
+
 # ---- guest system tests (musl+emulibc are meson-built; native only) ----
 if build_guest_toolchain
   subdir('conformance')

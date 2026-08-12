@@ -60,7 +60,8 @@ static mb_prot arg_to_prot(uintptr_t a, bool *bad) {
 }
 
 /* The guest syscall dispatcher (sysv64; installed in the Context). */
-static uintptr_t dispatch(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4,
+/* Called BY the interop blob, so it is sysv64 even on a Windows host. */
+static uintptr_t MB_SYSV dispatch(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4,
                           uintptr_t a5, uintptr_t a6, uintptr_t nr, void *hp) {
 	mb_host *h = (mb_host *)hp;
 	(void)a6;
