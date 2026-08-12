@@ -442,8 +442,15 @@ int mb_block_load_state(mb_block *b, mb_read_cb r, uintptr_t ud) {
 	uint8_t *dirtii = (uint8_t *)malloc(b->npages);
 	if (rd(r, ud, statii, b->npages) || rd(r, ud, dirtii, b->npages)) { free(statii); free(dirtii); return -EIO; }
 
+	/* Re-protecting the whole arena after every load is what made a savestate cost
+	 * time proportional to the DECLARED layout instead of to what actually
+	 * changed: a 272MB layout is 69,632 pages, walked and re-protected per frame
+	 * under rewind or a rerecord replay. Only the pages whose protection actually
+	 * changes need a syscall, so track those and refresh just their runs. */
+	size_t run_start = (size_t)-1, run_end = 0;
 	for (size_t i = 0; i < b->npages; i++) {
 		mb_page *p = &b->pages[i];
+		mb_prot prot_before = mb_page_native_prot(p);
 		if (!p->invisible) {
 			bool old_d = p->dirty, new_d = dirtii[i] != 0;
 			uintptr_t maddr = mirror_addr(b, b->addr.start + (i << MB_PAGESHIFT));
@@ -460,8 +467,15 @@ int mb_block_load_state(mb_block *b, mb_read_cb r, uintptr_t ud) {
 			p->dirty = new_d;
 		}
 		p->status = statii[i];
+		if (mb_page_native_prot(p) != prot_before) {
+			if (run_start == (size_t)-1) run_start = i;
+			run_end = i;
+		} else if (run_start != (size_t)-1) {
+			refresh_range(b, run_start, run_end - run_start + 1);
+			run_start = (size_t)-1;
+		}
 	}
+	if (run_start != (size_t)-1) refresh_range(b, run_start, run_end - run_start + 1);
 	free(statii); free(dirtii);
-	refresh_all(b);
 	return 0;
 }
