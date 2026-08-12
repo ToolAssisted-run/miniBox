@@ -85,7 +85,6 @@ if build_guest_toolchain
   waterbox_cpp_guest = get_option('guest_cpp')
   if waterbox_cpp_guest
     gcc_version = run_command('gcc', '-dumpfullversion', check: true).stdout().strip()
-    gcc_url = 'https://ftp.gnu.org/gnu/gcc/gcc-@0@/gcc-@0@.tar.xz'.format(gcc_version)
     cpp_dir = meson.current_build_dir() / 'cpp-toolchain'
     gcc_srcdir = cpp_dir / 'src' / 'gcc-' + gcc_version
     musl_specs = waterbox_sysroot / 'lib' / 'musl-gcc.specs'
@@ -103,8 +102,10 @@ set -e
 D=@0@
 V=@1@
 mkdir -p $D/src $D/build $D/gthr-inc
-# the matching GCC source, fetched once
-if [ ! -f $D/gcc-$V.tar.xz ]; then curl -sSL -o $D/gcc-$V.tar.xz.part @2@ && mv $D/gcc-$V.tar.xz.part $D/gcc-$V.tar.xz; fi
+# The matching GCC source, fetched once. Several mirrors are tried: ftp.gnu.org
+# is regularly unreachable from CI runners (connect timeouts), so it is last.
+if [ ! -f $D/gcc-$V.tar.xz ]; then for U in "https://mirrors.kernel.org/gnu/gcc/gcc-$V/gcc-$V.tar.xz" "https://ftpmirror.gnu.org/gcc/gcc-$V/gcc-$V.tar.xz" "https://gcc.gnu.org/pub/gcc/releases/gcc-$V/gcc-$V.tar.xz" "https://ftp.gnu.org/gnu/gcc/gcc-$V/gcc-$V.tar.xz"; do echo "fetching $U"; if curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 25 -o $D/gcc-$V.tar.xz.part "$U"; then mv $D/gcc-$V.tar.xz.part $D/gcc-$V.tar.xz; break; fi; done; fi
+if [ ! -f $D/gcc-$V.tar.xz ]; then echo "could not download the GCC $V source from any mirror" >&2; exit 1; fi
 # Extract the whole tree: libstdc++-v3 reaches into enough sibling directories
 # (config-ml.in, libbacktrace, gcc/BASE-VER, include, ...) that a curated member
 # list is fragile and would rot across GCC versions. The tree is transient - it
@@ -115,15 +116,15 @@ if [ ! -d $D/src/gcc-$V/libstdc++-v3 ]; then tar xf $D/gcc-$V.tar.xz -C $D/src; 
 # tzdb.cc build fails ("mutex does not name a type").
 echo '#include "gthr-posix.h"' > $D/gthr-inc/gthr-default.h
 cd $D/build
-if [ ! -f Makefile ]; then CC="gcc -specs @3@" CXX="g++ -specs @3@" CFLAGS="@4@ -I$D/gthr-inc" CXXFLAGS="@4@ -I$D/gthr-inc" $D/src/gcc-$V/libstdc++-v3/configure --host=x86_64-linux-musl --build=x86_64-pc-linux-gnu --prefix=@5@ --disable-shared --enable-static --disable-multilib --disable-libstdcxx-pch --disable-nls; fi
+if [ ! -f Makefile ]; then CC="gcc -specs @2@" CXX="g++ -specs @2@" CFLAGS="@3@ -I$D/gthr-inc" CXXFLAGS="@3@ -I$D/gthr-inc" $D/src/gcc-$V/libstdc++-v3/configure --host=x86_64-linux-musl --build=x86_64-pc-linux-gnu --prefix=@4@ --disable-shared --enable-static --disable-multilib --disable-libstdcxx-pch --disable-nls; fi
 make -j"$(nproc)"
 make install
 # everything needed now lives in the sysroot; reclaim the ~1.1GB source tree and
 # the build tree (the tarball is kept so a rebuild does not re-download)
 cd $D
 rm -rf $D/src $D/build
-touch @6@
-'''.format(cpp_dir, gcc_version, gcc_url, musl_specs, wbx_flags, waterbox_sysroot,
+touch @5@
+'''.format(cpp_dir, gcc_version, musl_specs, wbx_flags, waterbox_sysroot,
            meson.current_build_dir() / 'libstdcxx-installed.stamp')],
     )
     waterbox_gxx_include = waterbox_sysroot / 'include' / 'c++' / gcc_version

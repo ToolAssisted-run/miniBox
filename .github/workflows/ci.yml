@@ -77,7 +77,10 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends meson ninja-build build-essential gcc-mingw-w64-x86-64 wine64
+          sudo apt-get install -y --no-install-recommends meson ninja-build build-essential gcc-mingw-w64-x86-64
+          # NOT --no-install-recommends: the `wine` launcher is a Recommends of
+          # wine64, and without it there is no `wine` binary on PATH.
+          sudo apt-get install -y wine64
 
       # Cross builds skip the guest toolchain and guest tests by design: a guest
       # is a fake-machine target built with the host compiler. The host itself,
