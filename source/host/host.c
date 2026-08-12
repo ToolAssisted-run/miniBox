@@ -48,7 +48,7 @@ enum {
 #define FUTEX_UNLOCK_PI 7
 
 static uintptr_t serr(int e) { return (uintptr_t)(intptr_t)(-e); }  /* -errno as usize */
-static uintptr_t sok(long v) { return (uintptr_t)v; }
+static uintptr_t sok(mb_sword v) { return (uintptr_t)v; }
 
 static mb_prot arg_to_prot(uintptr_t a, bool *bad) {
 	*bad = false;
@@ -61,10 +61,25 @@ static mb_prot arg_to_prot(uintptr_t a, bool *bad) {
 
 /* The guest syscall dispatcher (sysv64; installed in the Context). */
 /* Called BY the interop blob, so it is sysv64 even on a Windows host. */
+/* Set MINIBOX_TRACE_SYSCALLS=1 to log every guest syscall as it happens. The
+ * guest is a sandbox: when it dies there is no core dump to read and no debugger
+ * attached, so the last logged syscall is usually the whole diagnosis. Flushed
+ * per line, because whatever kills the process will not flush for us. */
+static int trace_syscalls(void) {
+	static int on = -1;
+	if (on < 0) { const char *e = getenv("MINIBOX_TRACE_SYSCALLS"); on = e && *e && *e != '0'; }
+	return on;
+}
+
 static uintptr_t MB_SYSV dispatch(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4,
                           uintptr_t a5, uintptr_t a6, uintptr_t nr, void *hp) {
 	mb_host *h = (mb_host *)hp;
 	(void)a6;
+	if (trace_syscalls()) {
+		fprintf(stderr, "[syscall] %llu (%llx, %llx, %llx)\n", (unsigned long long)nr,
+		        (unsigned long long)a1, (unsigned long long)a2, (unsigned long long)a3);
+		fflush(stderr);
+	}
 	switch (nr) {
 		case NR_mmap: {
 			bool bad; mb_prot prot = arg_to_prot(a3, &bad); if (bad) return serr(EINVAL);
@@ -74,12 +89,12 @@ static uintptr_t MB_SYSV dispatch(uintptr_t a1, uintptr_t a2, uintptr_t a3, uint
 			if (flags & MAP_STACK) { if (prot == MB_PROT_RW) prot = MB_PROT_RWSTACK; else return serr(EINVAL); }
 			bool no_replace = (flags & MAP_FIXED_NOREPLACE) != 0;
 			mb_range r = { a1, a2 };
-			long res = mb_block_mmap(h->block, r, prot, h->layout.mmap_arena, no_replace);
+			mb_sword res = mb_block_mmap(h->block, r, prot, h->layout.mmap_arena, no_replace);
 			return res < 0 ? serr((int)-res) : sok(res);
 		}
 		case NR_mremap: {
 			mb_range r = { a1, a2 };
-			long res = mb_block_mremap(h->block, r, a3, h->layout.mmap_arena);
+			mb_sword res = mb_block_mremap(h->block, r, a3, h->layout.mmap_arena);
 			return res < 0 ? serr((int)-res) : sok(res);
 		}
 		case NR_mprotect: {
@@ -99,20 +114,20 @@ static uintptr_t MB_SYSV dispatch(uintptr_t a1, uintptr_t a2, uintptr_t a3, uint
 			else if (a1 > mb_range_end(arena)) { fprintf(stderr, "miniBox: sbrk heap exhausted\n"); res = old; }
 			else if (a1 > old) { mb_range r = { old, a1 - old }; mb_block_mmap_fixed(h->block, r, MB_PROT_RW, true); res = a1; }
 			else res = old;
-			h->program_break = res; return sok((long)res);
+			h->program_break = res; return sok((mb_sword)res);
 		}
-		case NR_stat:  { long r = mb_fs_stat_name(h->fs, (const char *)a1, (void *)a2); return r < 0 ? serr((int)-r) : sok(0); }
-		case NR_fstat: { long r = mb_fs_stat_fd(h->fs, (int)a1, (void *)a2); return r < 0 ? serr((int)-r) : sok(0); }
+		case NR_stat:  { mb_sword r = mb_fs_stat_name(h->fs, (const char *)a1, (void *)a2); return r < 0 ? serr((int)-r) : sok(0); }
+		case NR_fstat: { mb_sword r = mb_fs_stat_fd(h->fs, (int)a1, (void *)a2); return r < 0 ? serr((int)-r) : sok(0); }
 		case NR_ioctl: return sok(0);
-		case NR_read:  { long r = mb_fs_read(h->fs, (int)a1, (uint8_t *)a2, a3); return r < 0 ? serr((int)-r) : sok(r); }
-		case NR_write: { long r = mb_fs_write(h->fs, (int)a1, (const uint8_t *)a2, a3); return r < 0 ? serr((int)-r) : sok(r); }
+		case NR_read:  { mb_sword r = mb_fs_read(h->fs, (int)a1, (uint8_t *)a2, a3); return r < 0 ? serr((int)-r) : sok(r); }
+		case NR_write: { mb_sword r = mb_fs_write(h->fs, (int)a1, (const uint8_t *)a2, a3); return r < 0 ? serr((int)-r) : sok(r); }
 		case NR_readv: case NR_writev: {
 			/* iovec: {void* base; size_t len} */
 			struct iov { uintptr_t base; uintptr_t len; } *iov = (struct iov *)a2;
-			long total = 0;
+			mb_sword total = 0;
 			for (uintptr_t i = 0; i < a3; i++) {
 				if (!iov[i].base) continue;
-				long r = (nr == NR_readv)
+				mb_sword r = (nr == NR_readv)
 					? mb_fs_read(h->fs, (int)a1, (uint8_t *)iov[i].base, iov[i].len)
 					: mb_fs_write(h->fs, (int)a1, (const uint8_t *)iov[i].base, iov[i].len);
 				if (r < 0) return serr((int)-r);
@@ -120,11 +135,11 @@ static uintptr_t MB_SYSV dispatch(uintptr_t a1, uintptr_t a2, uintptr_t a3, uint
 			}
 			return sok(total);
 		}
-		case NR_open:  { long r = mb_fs_open(h->fs, (const char *)a1, (int)a2); return r < 0 ? serr((int)-r) : sok(r); }
-		case NR_close: { long r = mb_fs_close(h->fs, (int)a1); return r < 0 ? serr((int)-r) : sok(0); }
-		case NR_lseek: { long r = mb_fs_seek(h->fs, (int)a1, (long)a2, (int)a3); return r < 0 ? serr((int)-r) : sok(r); }
-		case NR_truncate:  { long r = mb_fs_truncate_name(h->fs, (const char *)a1, (long)a2); return r < 0 ? serr((int)-r) : sok(0); }
-		case NR_ftruncate: { long r = mb_fs_truncate_fd(h->fs, (int)a1, (long)a2); return r < 0 ? serr((int)-r) : sok(0); }
+		case NR_open:  { mb_sword r = mb_fs_open(h->fs, (const char *)a1, (int)a2); return r < 0 ? serr((int)-r) : sok(r); }
+		case NR_close: { mb_sword r = mb_fs_close(h->fs, (int)a1); return r < 0 ? serr((int)-r) : sok(0); }
+		case NR_lseek: { mb_sword r = mb_fs_seek(h->fs, (int)a1, (mb_sword)a2, (int)a3); return r < 0 ? serr((int)-r) : sok(r); }
+		case NR_truncate:  { mb_sword r = mb_fs_truncate_name(h->fs, (const char *)a1, (mb_sword)a2); return r < 0 ? serr((int)-r) : sok(0); }
+		case NR_ftruncate: { mb_sword r = mb_fs_truncate_fd(h->fs, (int)a1, (mb_sword)a2); return r < 0 ? serr((int)-r) : sok(0); }
 		case NR_clock_gettime: {
 			int64_t *ts = (int64_t *)a2;  /* {tv_sec, tv_nsec} */
 			ts[0] = 1495889068; ts[1] = 0; return sok(0);
@@ -138,7 +153,7 @@ static uintptr_t MB_SYSV dispatch(uintptr_t a1, uintptr_t a2, uintptr_t a3, uint
 			return mb_threads_yield(h->threads, &h->context);
 		case NR_wbx_clone: {
 			/* args: (tls/thread_area, child_rsp, child_rip, child_tid, parent_tid*) */
-			long r = mb_threads_spawn(h->threads, h->block, a1, a2, a3, a4, (uint32_t *)a5);
+			mb_sword r = mb_threads_spawn(h->threads, h->block, a1, a2, a3, a4, (uint32_t *)a5);
 			return r < 0 ? serr((int)-r) : sok(r);
 		}
 		case NR_exit: return mb_threads_exit(h->threads, &h->context);
@@ -154,7 +169,11 @@ static uintptr_t MB_SYSV dispatch(uintptr_t a1, uintptr_t a2, uintptr_t a3, uint
 			}
 		}
 		default:
+			/* flush before trapping: an illegal instruction takes the process down
+			 * without running atexit, and a redirected stderr would lose the one
+			 * line that explains the crash */
 			fprintf(stderr, "miniBox: unimplemented syscall %llu\n", (unsigned long long)nr);
+			fflush(stderr);
 			__builtin_trap();
 			return serr(ENOSYS);
 	}

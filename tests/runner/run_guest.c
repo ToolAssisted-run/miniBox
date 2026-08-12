@@ -33,9 +33,16 @@ static intptr_t mem_read(uintptr_t ud, uint8_t *data, uintptr_t n) {
 static int fails = 0;
 #define CHECK(c) do { if (!(c)) { fprintf(stderr, "  FAIL %s:%d %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
 
-/* guest->host callback (slot 0): record the last logged accumulator value */
+/* guest->host callback (slot 0): record the last logged accumulator value.
+ *
+ * MB_GUEST_ABI is NOT decoration: the guest calls this through the interop blob,
+ * which is sysv64. Compiled win64 on Windows, the callee would spill registers
+ * into 32 bytes of shadow space that a sysv64 caller never reserved - straight
+ * over the blob's own stack - and the return path would then read a garbage
+ * context pointer and fault. Any callback handed to wbx_get_callback_addr needs
+ * this. */
 static uint64_t g_last_log = 0;
-static uintptr_t log_cb(uintptr_t v, uintptr_t a2, uintptr_t a3, uintptr_t a4, uintptr_t a5, uintptr_t a6) {
+static uintptr_t MB_GUEST_ABI log_cb(uintptr_t v, uintptr_t a2, uintptr_t a3, uintptr_t a4, uintptr_t a5, uintptr_t a6) {
 	(void)a2;(void)a3;(void)a4;(void)a5;(void)a6; g_last_log = (uint32_t)v; return 0;
 }
 
@@ -75,20 +82,33 @@ static mb_host *make_host(const char *path, uint32_t seed) {
 
 static void seal_and_activate(mb_host *h) {
 	mb_return r;
+	fprintf(stderr, "[stage] sealing\n"); fflush(stderr);
 	wbx_deactivate_host(h, &r);
 	wbx_seal(h, &r);
 	if (r.error_message[0]) { fprintf(stderr, "seal: %s\n", r.error_message); exit(1); }
 	wbx_activate_host(h, &r);
 }
 
+/* Stage markers on stderr, which is unbuffered: when the host aborts or the
+ * process dies, buffered stdout is lost, and the last thing seen is whatever the
+ * GUEST printed (its writes go through the host's stderr). That reads as "it
+ * stopped right after guest init" no matter where it really stopped. */
+#define STAGE(...) do { fprintf(stderr, "[stage] " __VA_ARGS__); fputc('\n', stderr); fflush(stderr); } while (0)
+
 int main(int argc, char **argv) {
 	const char *path = argc > 1 ? argv[1] : "guest.wbx";
 	mb_return r;
 
+	setvbuf(stdout, NULL, _IONBF, 0);
+	STAGE("start, guest=%s", path);
+
 	/* ---- main run: init, callback, seal, steps, savestate round-trip ---- */
 	mb_host *h = make_host(path, 0xABCD);
+	STAGE("host created + guest mounted");
 	wbx_activate_host(h, &r);
+	STAGE("activated");
 
+	STAGE("resolving guest exports");
 	init_fn Init = (init_fn)proc(h, "Init");
 	step_fn Step = (step_fn)proc(h, "Step");
 	getacc_fn GetAcc = (getacc_fn)proc(h, "GetAcc");
@@ -99,11 +119,15 @@ int main(int argc, char **argv) {
 	CHECK(!r.error_message[0]);
 	SetLogCallback(r.data);
 
+	STAGE("calling guest Init");
 	CHECK(Init() == 1);
+	STAGE("Init returned");
 	seal_and_activate(h);
 
+	STAGE("stepping the guest");
 	uint32_t s1 = Step(0x11111111);
 	uint32_t s2 = Step(0x22222222);
+	STAGE("steps done");
 	uint64_t acc_at_save = GetAcc();
 	CHECK(g_last_log == (uint32_t)acc_at_save);   /* the guest->host callback fired */
 

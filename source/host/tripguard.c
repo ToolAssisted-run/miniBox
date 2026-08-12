@@ -93,6 +93,30 @@ static LONG CALLBACK veh(EXCEPTION_POINTERS *ep) {
 	bool write = ep->ExceptionRecord->ExceptionInformation[0] == 1;
 	uintptr_t fault = (uintptr_t)ep->ExceptionRecord->ExceptionInformation[1];
 	if (write && trip(fault)) return EXCEPTION_CONTINUE_EXECUTION;
+
+	/* About to become an unhandled access violation, i.e. an instant process
+	 * death with nothing to debug. Say what was asked for and whether any block
+	 * owns the address - the difference between "the guest touched something it
+	 * should not have" and "dirty-page tracking did not recognise its own
+	 * memory" is the whole diagnosis. */
+	{
+		mb_block *owner = NULL;
+		for (int i = 0; i < g_nblocks; i++)
+			if (mb_range_contains(g_blocks[i]->addr, fault)) { owner = g_blocks[i]; break; }
+		fprintf(stderr, "[veh] unhandled fault: addr=%p access=%s rip=%p, %s",
+		        (void *)fault,
+		        ep->ExceptionRecord->ExceptionInformation[0] == 0 ? "read"
+		          : ep->ExceptionRecord->ExceptionInformation[0] == 1 ? "write" : "execute",
+		        (void *)ep->ContextRecord->Rip,
+		        owner ? "inside a registered block" : "OUTSIDE every registered block");
+		if (owner) {
+			size_t pi = (fault - owner->addr.start) >> MB_PAGESHIFT;
+			fprintf(stderr, " (page %zu status=%u dirty=%u invisible=%u)",
+			        pi, owner->pages[pi].status, owner->pages[pi].dirty, owner->pages[pi].invisible);
+		}
+		fprintf(stderr, " [%d block(s) registered]\n", g_nblocks);
+		fflush(stderr);
+	}
 	return EXCEPTION_CONTINUE_SEARCH;
 }
 

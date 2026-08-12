@@ -5,6 +5,7 @@
 #include "minibox_internal.h"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <stdio.h>
 
 static uint32_t prot_to_native(mb_prot prot) {
 	switch (prot) {
@@ -44,7 +45,24 @@ void mb_pal_unmap_handle(mb_range addr) { UnmapViewOfFile((void *)addr.start); }
 
 int mb_pal_map_anon(mb_range in, mb_prot prot, mb_range *out) {
 	void *p = VirtualAlloc((void *)in.start, in.size, MEM_RESERVE | MEM_COMMIT, prot_to_native(prot));
-	if (p == NULL) return -1;
+	if (p == NULL) {
+		/* Callers abort on failure, and an aborting GUI process leaves the user
+		 * with an instant silent exit. Say what failed before that happens: the
+		 * address, the size, and what Windows thought of it. */
+		MEMORY_BASIC_INFORMATION mbi;
+		DWORD err = GetLastError();
+		if (in.start && VirtualQuery((void *)in.start, &mbi, sizeof mbi)) {
+			fprintf(stderr, "miniBox: VirtualAlloc(%p, %llu) failed, error %lu "
+			                "(that address is currently state=%lx protect=%lx type=%lx)\n",
+			        (void *)in.start, (unsigned long long)in.size, (unsigned long)err,
+			        (unsigned long)mbi.State, (unsigned long)mbi.Protect, (unsigned long)mbi.Type);
+		} else {
+			fprintf(stderr, "miniBox: VirtualAlloc(%p, %llu) failed, error %lu\n",
+			        (void *)in.start, (unsigned long long)in.size, (unsigned long)err);
+		}
+		fflush(stderr);
+		return -1;
+	}
 	out->start = (uintptr_t)p;
 	out->size = in.size;
 	return 0;

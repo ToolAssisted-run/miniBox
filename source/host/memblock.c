@@ -234,7 +234,7 @@ static size_t find_free_pages(mb_block *b, size_t arena_start, size_t arena_coun
 	return best;
 }
 
-long mb_block_mmap(mb_block *b, mb_range addr, mb_prot prot, mb_range arena, bool no_replace) {
+mb_sword mb_block_mmap(mb_block *b, mb_range addr, mb_prot prot, mb_range arena, bool no_replace) {
 	if (addr.size == 0) return -EINVAL;
 	if (addr.start == 0) {
 		if (addr.size != mb_align_down(addr.size)) return -EINVAL;
@@ -287,7 +287,7 @@ int mb_block_munmap(mb_block *b, mb_range addr) { return munmap_impl(b, addr, fa
 int mb_block_madvise_dontneed(mb_block *b, mb_range addr) { return munmap_impl(b, addr, true); }
 
 /* in-place mremap only (grow needs following pages free; shrink munmaps tail) */
-long mb_block_mremap(mb_block *b, mb_range addr, uintptr_t new_size, mb_range arena) {
+mb_sword mb_block_mremap(mb_block *b, mb_range addr, uintptr_t new_size, mb_range arena) {
 	(void)arena;
 	get_stack_dirty(b);
 	if (addr.size == 0 || new_size == 0) return -EINVAL;

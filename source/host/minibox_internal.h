@@ -12,6 +12,14 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+/* The guest ABI's signed word. It has to be 64-bit everywhere: Linux is LP64 so
+ * `long` was fine, but Windows is LLP64 where `long` is 32 bits - and a guest
+ * address like 0x36f0020b000 passed back through one comes out as 0x20b000. That
+ * is not a subtle bug: brk returned a truncated break, the guest computed its
+ * next break from it, and the process died inside the first file read. */
+typedef intptr_t mb_sword;
+
+
 #define MB_PAGESIZE 0x1000u
 #define MB_PAGEMASK 0xfffu
 #define MB_PAGESHIFT 12
@@ -105,11 +113,11 @@ void      mb_block_deactivate(mb_block *b);
 
 /* syscall-shaped memory ops; return 0 on success or -errno. */
 int  mb_block_mmap_fixed(mb_block *b, mb_range addr, mb_prot prot, bool no_replace);
-long mb_block_mmap(mb_block *b, mb_range addr, mb_prot prot, mb_range arena, bool no_replace); /* addr or -errno */
+mb_sword mb_block_mmap(mb_block *b, mb_range addr, mb_prot prot, mb_range arena, bool no_replace); /* addr or -errno */
 int  mb_block_mprotect(mb_block *b, mb_range addr, mb_prot prot);
 int  mb_block_munmap(mb_block *b, mb_range addr);
 int  mb_block_madvise_dontneed(mb_block *b, mb_range addr);
-long mb_block_mremap(mb_block *b, mb_range addr, uintptr_t new_size, mb_range arena);
+mb_sword mb_block_mremap(mb_block *b, mb_range addr, uintptr_t new_size, mb_range arena);
 int  mb_block_mark_invisible(mb_block *b, mb_range addr);
 int  mb_block_copy_from_external(mb_block *b, const uint8_t *src, uintptr_t start, uintptr_t len);
 int  mb_block_seal(mb_block *b);
@@ -180,15 +188,15 @@ void   mb_fs_free(mb_fs *fs);
 int    mb_fs_mount(mb_fs *fs, const char *name, const uint8_t *data, size_t len, bool writable);
 int    mb_fs_unmount(mb_fs *fs, const char *name, uint8_t **out_data, size_t *out_len); /* caller frees */
 /* syscall-shaped ops: return value or -errno */
-long mb_fs_open(mb_fs *fs, const char *name, int flags);
-long mb_fs_close(mb_fs *fs, int fd);
-long mb_fs_read(mb_fs *fs, int fd, uint8_t *buf, size_t n);
-long mb_fs_write(mb_fs *fs, int fd, const uint8_t *buf, size_t n);
-long mb_fs_seek(mb_fs *fs, int fd, long offset, int whence);
-long mb_fs_stat_name(mb_fs *fs, const char *name, void *kstat);
-long mb_fs_stat_fd(mb_fs *fs, int fd, void *kstat);
-long mb_fs_truncate_name(mb_fs *fs, const char *name, long size);
-long mb_fs_truncate_fd(mb_fs *fs, int fd, long size);
+mb_sword mb_fs_open(mb_fs *fs, const char *name, int flags);
+mb_sword mb_fs_close(mb_fs *fs, int fd);
+mb_sword mb_fs_read(mb_fs *fs, int fd, uint8_t *buf, size_t n);
+mb_sword mb_fs_write(mb_fs *fs, int fd, const uint8_t *buf, size_t n);
+mb_sword mb_fs_seek(mb_fs *fs, int fd, mb_sword offset, int whence);
+mb_sword mb_fs_stat_name(mb_fs *fs, const char *name, void *kstat);
+mb_sword mb_fs_stat_fd(mb_fs *fs, int fd, void *kstat);
+mb_sword mb_fs_truncate_name(mb_fs *fs, const char *name, mb_sword size);
+mb_sword mb_fs_truncate_fd(mb_fs *fs, int fd, mb_sword size);
 
 /* Internal helpers shared with tripguard (memblock.c). */
 mb_prot mb_page_native_prot(const mb_page *p);

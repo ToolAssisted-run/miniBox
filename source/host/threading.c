@@ -15,7 +15,7 @@ static int mb_tdbg(void) { static int v = -1; if (v < 0) { const char *e = geten
 
 #define FUTEX_WAITERS 0x80000000u
 
-static uintptr_t sok(long v) { return (uintptr_t)v; }
+static uintptr_t sok(mb_sword v) { return (uintptr_t)v; }
 static uintptr_t serr(int e) { return (uintptr_t)(intptr_t)(-e); }
 
 typedef enum { T_RUNNABLE, T_WAITING } tstate;
@@ -137,7 +137,7 @@ static void park_other(mb_threads *t, uintptr_t addr, uint32_t tid) {
 }
 
 /* ---- syscalls ---- */
-long mb_threads_spawn(mb_threads *t, mb_block *b, uintptr_t thread_area,
+mb_sword mb_threads_spawn(mb_threads *t, mb_block *b, uintptr_t thread_area,
                       uintptr_t guest_rsp, uintptr_t guest_rip, uintptr_t child_tid, uint32_t *parent_tid) {
 	uint32_t tid = t->next_tid;
 	/* the musl pthread struct: words 12,13 are stack_end and stack_size */
@@ -177,7 +177,7 @@ uintptr_t mb_threads_futex_wait(mb_threads *t, mb_context *c, uintptr_t addr, ui
 	return park_me(t, c, sok(0), addr);
 }
 
-long mb_threads_futex_requeue(mb_threads *t, uintptr_t from, uintptr_t to, uint32_t wake, uint32_t requeue) {
+mb_sword mb_threads_futex_requeue(mb_threads *t, uintptr_t from, uintptr_t to, uint32_t wake, uint32_t requeue) {
 	long count = 0;
 	while (wake > 0 || requeue > 0) {
 		uint32_t tid; bool more;
@@ -189,7 +189,7 @@ long mb_threads_futex_requeue(mb_threads *t, uintptr_t from, uintptr_t to, uint3
 	}
 	return count;
 }
-long mb_threads_futex_wake(mb_threads *t, uintptr_t addr, uint32_t count) {
+mb_sword mb_threads_futex_wake(mb_threads *t, uintptr_t addr, uint32_t count) {
 	TDBG("futex_wake tid=%u addr=%lx count=%u\n",t->active_tid,(unsigned long)addr,count);
 	return mb_threads_futex_requeue(t, addr, 0, count, 0);
 }

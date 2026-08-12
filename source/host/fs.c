@@ -101,7 +101,7 @@ int mb_fs_unmount(mb_fs *fs, const char *name, uint8_t **out_data, size_t *out_l
 	return -ENOENT;
 }
 
-long mb_fs_open(mb_fs *fs, const char *name, int flags) {
+mb_sword mb_fs_open(mb_fs *fs, const char *name, int flags) {
 	int fd = 0;
 	while (by_fd(fs, fd)) fd++;
 	mounted_file *f = by_name(fs, name);
@@ -119,7 +119,7 @@ long mb_fs_open(mb_fs *fs, const char *name, int flags) {
 	return fd;
 }
 
-long mb_fs_close(mb_fs *fs, int fd) {
+mb_sword mb_fs_close(mb_fs *fs, int fd) {
 	mounted_file *f = by_fd(fs, fd);
 	if (!f) return -EBADF;
 	f->pos = 0;
@@ -127,40 +127,40 @@ long mb_fs_close(mb_fs *fs, int fd) {
 	return 0;
 }
 
-long mb_fs_read(mb_fs *fs, int fd, uint8_t *buf, size_t n) {
+mb_sword mb_fs_read(mb_fs *fs, int fd, uint8_t *buf, size_t n) {
 	mounted_file *f = by_fd(fs, fd);
 	if (!f) return -ENOENT;
 	if (f->kind == F_EMPTY) return 0;
 	if (f->kind == F_SYSOUT) return -EBADF;
 	size_t avail = f->len - f->pos, take = n < avail ? n : avail;
 	memcpy(buf, f->data + f->pos, take); f->pos += take;
-	return (long)take;
+	return (mb_sword)take;
 }
 
-long mb_fs_write(mb_fs *fs, int fd, const uint8_t *buf, size_t n) {
+mb_sword mb_fs_write(mb_fs *fs, int fd, const uint8_t *buf, size_t n) {
 	mounted_file *f = by_fd(fs, fd);
 	if (!f) return -ENOENT;
-	if (f->kind == F_SYSOUT) { fwrite(buf, 1, n, f->sysout); return (long)n; } /* host errors swallowed */
+	if (f->kind == F_SYSOUT) { fwrite(buf, 1, n, f->sysout); return (mb_sword)n; } /* host errors swallowed */
 	if (f->kind == F_EMPTY || !f->writable) return -EBADF;
 	size_t newpos = f->pos + n;
 	if (newpos > f->cap) { f->cap = newpos; f->data = realloc(f->data, f->cap); }
 	memcpy(f->data + f->pos, buf, n);
 	f->pos = newpos;
 	if (newpos > f->len) f->len = newpos;
-	return (long)n;
+	return (mb_sword)n;
 }
 
-long mb_fs_seek(mb_fs *fs, int fd, long offset, int whence) {
+mb_sword mb_fs_seek(mb_fs *fs, int fd, mb_sword offset, int whence) {
 	mounted_file *f = by_fd(fs, fd);
 	if (!f || f->kind != F_REGULAR) return -EINVAL;
-	long newpos;
+	mb_sword newpos;
 	switch (whence) {
 		case SEEK_SET: newpos = offset; break;
-		case SEEK_CUR: newpos = (long)f->pos + offset; break;
-		case SEEK_END: newpos = (long)f->len + offset; break;
+		case SEEK_CUR: newpos = (mb_sword)f->pos + offset; break;
+		case SEEK_END: newpos = (mb_sword)f->len + offset; break;
 		default: return -EINVAL;
 	}
-	if (newpos < 0 || newpos > (long)f->len) return -EINVAL;
+	if (newpos < 0 || newpos > (mb_sword)f->len) return -EINVAL;
 	f->pos = (size_t)newpos;
 	return newpos;
 }
@@ -180,20 +180,20 @@ static void fill_stat(kstat *s, bool can_read, bool can_write, bool can_seek, in
 	s->st_atime_nsec = s->st_mtime_nsec = s->st_ctime_nsec = 500000000LL;
 }
 
-static long stat_file(mounted_file *f, kstat *s) {
+static mb_sword stat_file(mounted_file *f, kstat *s) {
 	if (f->kind == F_SYSOUT) fill_stat(s, false, true, false, 0);
 	else if (f->kind == F_EMPTY) fill_stat(s, true, false, false, 0);
 	else fill_stat(s, true, f->writable, true, (int64_t)f->len);
 	return 0;
 }
 
-long mb_fs_stat_name(mb_fs *fs, const char *name, void *ks) {
+mb_sword mb_fs_stat_name(mb_fs *fs, const char *name, void *ks) {
 	mounted_file *f = by_name(fs, name); if (!f) return -ENOENT; return stat_file(f, (kstat *)ks);
 }
-long mb_fs_stat_fd(mb_fs *fs, int fd, void *ks) {
+mb_sword mb_fs_stat_fd(mb_fs *fs, int fd, void *ks) {
 	mounted_file *f = by_fd(fs, fd); if (!f) return -ENOENT; return stat_file(f, (kstat *)ks);
 }
-long mb_fs_truncate_name(mb_fs *fs, const char *name, long size) {
+mb_sword mb_fs_truncate_name(mb_fs *fs, const char *name, mb_sword size) {
 	mounted_file *f = by_name(fs, name);
 	if (!f) return -ENOENT;
 	if (f->kind != F_REGULAR || !f->writable || size < 0) return -EBADF;
@@ -201,6 +201,6 @@ long mb_fs_truncate_name(mb_fs *fs, const char *name, long size) {
 	if (f->pos > f->len) f->pos = f->len;
 	return 0;
 }
-long mb_fs_truncate_fd(mb_fs *fs, int fd, long size) {
+mb_sword mb_fs_truncate_fd(mb_fs *fs, int fd, mb_sword size) {
 	mounted_file *f = by_fd(fs, fd); if (!f) return -ENOENT; return mb_fs_truncate_name(fs, f->name, size);
 }
