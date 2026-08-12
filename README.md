@@ -35,7 +35,8 @@ docs/ATTRIBUTION.md for the full component-by-component breakdown.
 - `extern/` - external/vendored libraries: `musl` (the guest libc, vendored
   from nattthebear/musl @ 2063abc4 with one local fix baked in - see
   docs/ATTRIBUTION.md), `emulibc` (BizHawk's guest support lib: ECL_* macros,
-  sealed/invisible/plain allocators, `__wbxsysinfo`), `libco` (byuu's
+  sealed/invisible/plain allocators, `__wbxsysinfo`), `jsmn` (a tiny JSON
+  tokenizer for the guest settings helper), `libco` (byuu's
   cothreads), `libcxx` (LLVM sysroot build scripts for C++ guests).
 - `tests/` - the test suite (host unit tests + guest system tests).
 - `docs/` - `MACHINE-SPEC.md` (the frozen machine contract), `ATTRIBUTION.md`

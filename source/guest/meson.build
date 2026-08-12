@@ -25,11 +25,15 @@ if not build_guest_toolchain
 endif
 
 waterbox_emulibc_dir = meson.project_source_root() / 'extern' / 'emulibc'
+waterbox_guestkit_inc = meson.current_source_dir() / 'include'     # miniBox guest kit headers
+waterbox_jsmn_dir     = meson.project_source_root() / 'extern' / 'jsmn'
 waterbox_linkscript  = meson.current_source_dir() / 'linkscript.T'
 
 # The frozen guest flags (BizHawk waterbox COMMONFLAGS; C, no C++/LTO).
 waterbox_guest_cflags = [
-  '-fvisibility=hidden', '-I' + waterbox_emulibc_dir, '-Wall', '-mcmodel=large',
+  '-fvisibility=hidden', '-I' + waterbox_emulibc_dir,
+  '-I' + waterbox_guestkit_inc, '-I' + waterbox_jsmn_dir,
+  '-Wall', '-mcmodel=large',
   '-mstack-protector-guard=global', '-fno-pic', '-fno-pie', '-fcf-protection=none',
   '-O2', '-DNDEBUG',
 ]
@@ -53,6 +57,8 @@ configure_file(
   configuration: {
     'MUSL_GCC': waterbox_musl_gcc.full_path(),
     'EMULIBC_INC': waterbox_emulibc_dir,
+    'GUESTKIT_INC': waterbox_guestkit_inc,
+    'JSMN_INC': waterbox_jsmn_dir,
     'EMULIBC_OBJ': waterbox_emulibc_ct.full_path(),
     'LINKSCRIPT': waterbox_linkscript,
   },

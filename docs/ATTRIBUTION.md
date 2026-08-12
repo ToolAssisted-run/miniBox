@@ -57,6 +57,13 @@ released into the public domain (see the header of each file: "license: public
 domain"). `extern/libco/amd64.c` is the waterbox rewrite of the amd64 backend
 (BizHawk, MIT), built on that public-domain base.
 
+### jsmn - MIT (Serge Zaitsev)
+
+`extern/jsmn/jsmn.h` is jsmn, a minimal single-header JSON tokenizer,
+Copyright (c) 2010 Serge Zaitsev, MIT License (full text in the file header and
+`extern/jsmn/LICENSE`). The guest kit's `source/guest/include/waterbox_settings.h`
+uses it to parse the host's settings channel for C cores.
+
 ## Components fetched or built at build time (NOT vendored here)
 
 ### LLVM libc++ / libc++abi / libunwind / compiler-rt - Apache-2.0 WITH LLVM exception
