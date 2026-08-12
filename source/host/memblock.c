@@ -403,8 +403,19 @@ int mb_block_save_state(mb_block *b, mb_write_cb w, uintptr_t ud) {
 	if (wr(w, ud, MAGIC, sizeof(MAGIC) - 1)) return -EIO;
 	if (wr(w, ud, b->hash, 32)) return -EIO;
 	if (wr(w, ud, &b->addr, sizeof(b->addr))) return -EIO;
-	for (size_t i = 0; i < b->npages; i++) if (wr(w, ud, &b->pages[i].status, 1)) return -EIO;
-	for (size_t i = 0; i < b->npages; i++) { uint8_t d = b->pages[i].dirty; if (wr(w, ud, &d, 1)) return -EIO; }
+	/* The status and dirty arrays go out as two blocks, not two callbacks per
+	 * page. The write callback crosses into the host language (a managed delegate
+	 * for the C# frontend), so a per-byte loop over a 272MB layout is ~139,000
+	 * marshalled calls per state - which, with rewind taking a state every frame,
+	 * cost more than the emulation itself. The bytes on the wire are unchanged, so
+	 * existing savestates still load (the reader already reads them in bulk). */
+	uint8_t *flags = (uint8_t *)malloc(b->npages);
+	if (!flags) return -ENOMEM;
+	for (size_t i = 0; i < b->npages; i++) flags[i] = b->pages[i].status;
+	if (wr(w, ud, flags, b->npages)) { free(flags); return -EIO; }
+	for (size_t i = 0; i < b->npages; i++) flags[i] = b->pages[i].dirty;
+	if (wr(w, ud, flags, b->npages)) { free(flags); return -EIO; }
+	free(flags);
 	for (size_t i = 0; i < b->npages; i++) {
 		if (!b->pages[i].invisible && b->pages[i].dirty) {
 			uintptr_t maddr = mirror_addr(b, b->addr.start + (i << MB_PAGESHIFT));
