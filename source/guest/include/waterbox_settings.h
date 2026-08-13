@@ -31,13 +31,43 @@
 /* Copies the raw value text for `key` (for JSON strings, the unquoted content;
  * for numbers/bools, the literal) into `out`, NUL-terminated. Returns out on
  * success, or NULL if the file or key is absent. */
+/* Where the next read comes from. Normally the mounted "settings" file, which
+ * holds the settings this core was STARTED with. A host that supports live
+ * (non-sync) settings hands over a fresh JSON buffer instead - see
+ * wbx_settings_use_buffer below - because the mounted file is fixed for the
+ * lifetime of the core and cannot carry a later change. */
+static const char *wbx__settings_override = 0;
+static int wbx__settings_override_len = 0;
+
+/* Point subsequent wbx_setting_* reads at `json` instead of the mounted file.
+ * Call from the core's PutSettings(len) export, read what you need, then call
+ * wbx_settings_use_file() to go back. */
+static inline void wbx_settings_use_buffer(const char *json, int len)
+{
+	wbx__settings_override = json;
+	wbx__settings_override_len = len;
+}
+
+static inline void wbx_settings_use_file(void)
+{
+	wbx__settings_override = 0;
+	wbx__settings_override_len = 0;
+}
+
 static inline const char *wbx__setting_raw(const char *key, char *out, int outsz)
 {
-	FILE *f = fopen("settings", "rb");
-	if (!f) return 0;
 	char buf[WBX_SETTINGS_MAX_BYTES];
-	size_t n = fread(buf, 1, sizeof buf - 1, f);
-	fclose(f);
+	size_t n;
+	if (wbx__settings_override) {
+		n = (size_t)wbx__settings_override_len;
+		if (n > sizeof buf - 1) n = sizeof buf - 1;
+		memcpy(buf, wbx__settings_override, n);
+	} else {
+		FILE *f = fopen("settings", "rb");
+		if (!f) return 0;
+		n = fread(buf, 1, sizeof buf - 1, f);
+		fclose(f);
+	}
 	buf[n] = 0;
 
 	jsmn_parser p;
