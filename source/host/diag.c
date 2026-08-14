@@ -49,3 +49,37 @@ void mb_diag_banner(const char *what) {
 	if (tm == NULL || strftime(stamp, sizeof stamp, "%Y-%m-%d %H:%M:%S", tm) == 0) stamp[0] = '\0';
 	mb_diag("\n=== miniBox: %s (%s) ===\n", what, stamp);
 }
+
+/* ---- provenance ----
+ * What this library was built from, for the frontend to show and a movie to record.
+ * The whole emulation path is meant to be reproducible from what an artifact carries;
+ * the host was the last part of it that could not say where it came from.
+ *
+ * The values arrive as compile-time defines because two build systems compile these
+ * sources (miniBox's own, and miniHawk's, which lists them itself), and a define is
+ * the one thing both can supply without sharing a generated file. Everything here is
+ * a function of the inputs - no timestamps, no hostname, no paths - so that two
+ * builds of one commit stay byte-identical.
+ */
+#ifndef MB_BUILD_COMMIT
+#define MB_BUILD_COMMIT "unknown"
+#endif
+#ifndef MB_BUILD_COMPILER
+#define MB_BUILD_COMPILER "unknown"
+#endif
+#ifndef MB_BUILD_OS
+#define MB_BUILD_OS "unknown"
+#endif
+
+const char *mb_build_info(void) {
+	return "{\"component\":\"miniBox host\""
+	       ",\"commit\":\"" MB_BUILD_COMMIT "\""
+	       ",\"compiler\":\"" MB_BUILD_COMPILER "\""
+	       ",\"builtOn\":\"" MB_BUILD_OS "\""
+#if defined(_WIN32)
+	       ",\"target\":\"windows-x86_64\""
+#else
+	       ",\"target\":\"linux-x86_64\""
+#endif
+	       "}";
+}

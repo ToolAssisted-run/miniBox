@@ -60,6 +60,10 @@ void wbx_create_host(const mb_memory_layout_template *layout, const char *module
 	ok(ret, (uintptr_t)h);
 }
 
+/* What built this host, as JSON. The frontend records it: a run is only reproducible
+ * if every binary in the path can say where it came from, and this is the sandbox. */
+const char *wbx_build_info(void) { return mb_build_info(); }
+
 void wbx_destroy_host(mb_host *obj, mb_return *ret) { mb_host_destroy(obj); ok(ret, 0); }
 void wbx_activate_host(mb_host *obj, mb_return *ret) { mb_host_activate(obj); ok(ret, 0); }
 void wbx_deactivate_host(mb_host *obj, mb_return *ret) { mb_host_deactivate(obj); ok(ret, 0); }

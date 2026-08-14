@@ -209,6 +209,9 @@ void    mb_page_maybe_snapshot(mb_page *p, uintptr_t mirror_addr);
  * host loaded into a GUI process has no stderr and "it vanished" is not a bug
  * report. Fatal paths only: no file is written during a healthy run. */
 void    mb_diag(const char *fmt, ...);
+
+/// JSON describing what built this library (see diag.c). Exported as wbx_build_info.
+const char *mb_build_info(void);
 void    mb_diag_banner(const char *what);
 
 #endif

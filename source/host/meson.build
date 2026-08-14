@@ -33,7 +33,25 @@ endif
 
 # -fno-strict-aliasing: the memory block reinterprets guest bytes freely through
 # the mirror; keep the optimizer honest about that.
-minibox_host_c_args = ['-fno-strict-aliasing']
+# Provenance, compiled in: what this library was built from, so a frontend can show
+# it and a movie can record it (see mb_build_info in diag.c). Inputs only - a
+# timestamp here would make two builds of one commit differ.
+minibox_git_commit = run_command(
+  'git', '-C', meson.project_source_root(), 'rev-parse', '--short=12', 'HEAD',
+  check: false).stdout().strip()
+if minibox_git_commit == ''
+  minibox_git_commit = 'unknown'
+endif
+minibox_build_os = run_command(
+  'sh', '-c', '. /etc/os-release 2>/dev/null && printf "%s %s" "$ID" "$VERSION_ID" || uname -s',
+  check: false).stdout().strip()
+
+minibox_host_c_args = [
+  '-fno-strict-aliasing',
+  '-DMB_BUILD_COMMIT="' + minibox_git_commit + '"',
+  '-DMB_BUILD_COMPILER="' + meson.get_compiler('c').get_id() + ' ' + meson.get_compiler('c').version() + '"',
+  '-DMB_BUILD_OS="' + minibox_build_os + '"',
+]
 
 libminiboxhost = both_libraries(
   'miniboxhost',
