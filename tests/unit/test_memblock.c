@@ -58,8 +58,8 @@ static void test_mmap_movable_bestfit(void) {
 	CHECK_EQ(mb_block_munmap(b, h2), 0);
 	CHECK_EQ(mb_block_munmap(b, h4), 0);
 	mb_range req = { 0, 0x2000 };   /* want 2 pages -> should land in the 2-page hole */
-	long got = mb_block_mmap(b, req, MB_PROT_RW, all, false);
-    CHECK_EQ(got, (long)(b->addr.start + 0x1000));
+	mb_sword got = mb_block_mmap(b, req, MB_PROT_RW, all, false);
+	CHECK_EQ(got, (mb_sword)(b->addr.start + 0x1000));
 	mb_block_free(b);
 }
 
@@ -105,8 +105,8 @@ static void test_mremap_inplace(void) {
 	mb_range two = { b->addr.start, 0x2000 };
 	CHECK_EQ(mb_block_mmap_fixed(b, two, MB_PROT_RW, true), 0);
 	/* grow in place: following pages are free -> ok */
-	long g = mb_block_mremap(b, two, 0x4000, (mb_range){0,0});
-	CHECK_EQ(g, (long)b->addr.start);
+	mb_sword g = mb_block_mremap(b, two, 0x4000, (mb_range){0,0});
+	CHECK_EQ(g, (mb_sword)b->addr.start);
 	CHECK(!freed(b, 3));
 	/* grow blocked: allocate the page after, then try to grow over it -> EEXIST */
 	mb_range four = { b->addr.start, 0x4000 };
@@ -114,7 +114,7 @@ static void test_mremap_inplace(void) {
 	CHECK_EQ(mb_block_mmap_fixed(b, blocker, MB_PROT_RW, true), 0);
 	CHECK_EQ(mb_block_mremap(b, four, 0x6000, (mb_range){0,0}), -EEXIST);
 	/* shrink: tail becomes free */
-	CHECK_EQ(mb_block_mremap(b, four, 0x2000, (mb_range){0,0}), (long)b->addr.start);
+	CHECK_EQ(mb_block_mremap(b, four, 0x2000, (mb_range){0,0}), (mb_sword)b->addr.start);
 	CHECK(freed(b, 3));
 	mb_block_free(b);
 }

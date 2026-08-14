@@ -15,7 +15,7 @@ static const char DOG[] = "The quick brown fox jumps over the lazy dog.";
 static void test_ro_read(void) {
 	mb_fs *fs = mb_fs_new();
 	CHECK_EQ(mb_fs_mount(fs, "f", (const uint8_t *)DOG, sizeof(DOG)-1, false), 0);
-	long fd = mb_fs_open(fs, "f", O_RDONLY);
+	mb_sword fd = mb_fs_open(fs, "f", O_RDONLY);
 	CHECK_EQ(fd, 3);   /* 0,1,2 are stdio */
 	uint8_t buf[8];
 	CHECK(mb_fs_write(fs, fd, buf, 8) < 0);   /* read-only: write fails */
@@ -29,12 +29,12 @@ static void test_ro_read(void) {
 static void test_seek(void) {
 	mb_fs *fs = mb_fs_new();
 	mb_fs_mount(fs, "f", (const uint8_t *)DOG, sizeof(DOG)-1, false);
-	long fd = mb_fs_open(fs, "f", O_RDONLY);
+	mb_sword fd = mb_fs_open(fs, "f", O_RDONLY);
 	uint8_t buf[4];
 	CHECK_EQ(mb_fs_seek(fs, fd, 4, SEEK_SET), 4);
 	CHECK_EQ(mb_fs_read(fs, fd, buf, 4), 4);
 	CHECK(memcmp(buf, "quic", 4) == 0);
-	CHECK_EQ(mb_fs_seek(fs, fd, -4, SEEK_END), (long)(sizeof(DOG)-1-4));
+	CHECK_EQ(mb_fs_seek(fs, fd, -4, SEEK_END), (mb_sword)(sizeof(DOG)-1-4));
 	CHECK_EQ(mb_fs_read(fs, fd, buf, 4), 4);
 	CHECK(memcmp(buf, "dog.", 4) == 0);
 	/* out of range seek */
@@ -45,7 +45,7 @@ static void test_seek(void) {
 static void test_rw_write_grow(void) {
 	mb_fs *fs = mb_fs_new();
 	mb_fs_mount(fs, "z", NULL, 0, true);
-	long fd = mb_fs_open(fs, "z", O_RDWR);
+	mb_sword fd = mb_fs_open(fs, "z", O_RDWR);
 	CHECK_EQ(mb_fs_write(fs, fd, (const uint8_t *)"Big test", 8), 8);
 	CHECK_EQ(mb_fs_seek(fs, fd, 0, SEEK_SET), 0);
 	CHECK_EQ(mb_fs_write(fs, fd, (const uint8_t *)"Q", 1), 1);
@@ -64,8 +64,8 @@ static void test_fd_semantics(void) {
 	mb_fs *fs = mb_fs_new();
 	mb_fs_mount(fs, "a", (const uint8_t *)"x", 1, false);
 	mb_fs_mount(fs, "b", (const uint8_t *)"y", 1, false);
-	long fa = mb_fs_open(fs, "a", O_RDONLY);
-	long fb = mb_fs_open(fs, "b", O_RDONLY);
+	mb_sword fa = mb_fs_open(fs, "a", O_RDONLY);
+	mb_sword fb = mb_fs_open(fs, "b", O_RDONLY);
 	CHECK_EQ(fa, 3);
 	CHECK_EQ(fb, 4);
 	/* double-open the same file -> EACCES */
@@ -88,7 +88,7 @@ static void test_mount_errors(void) {
 	CHECK_EQ(mb_fs_unmount(fs, "ghost", NULL, NULL), -ENOENT);
 	/* unmount while open -> EBUSY */
 	mb_fs_mount(fs, "w", NULL, 0, true);
-	long fd = mb_fs_open(fs, "w", O_RDWR);
+	mb_sword fd = mb_fs_open(fs, "w", O_RDWR);
 	CHECK_EQ(mb_fs_unmount(fs, "w", NULL, NULL), -EBUSY);
 	mb_fs_close(fs, fd);
 	CHECK_EQ(mb_fs_unmount(fs, "w", NULL, NULL), 0);
