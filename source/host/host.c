@@ -172,8 +172,11 @@ static uintptr_t MB_SYSV dispatch(uintptr_t a1, uintptr_t a2, uintptr_t a3, uint
 			/* flush before trapping: an illegal instruction takes the process down
 			 * without running atexit, and a redirected stderr would lose the one
 			 * line that explains the crash */
-			fprintf(stderr, "miniBox: unimplemented syscall %llu\n", (unsigned long long)nr);
-			fflush(stderr);
+			mb_diag_banner("unimplemented syscall");
+			mb_diag("miniBox: unimplemented syscall %llu (%llx, %llx, %llx)\n",
+			        (unsigned long long)nr, (unsigned long long)a1,
+			        (unsigned long long)a2, (unsigned long long)a3);
+			mb_diag("  the guest asked the host for something it does not provide; it cannot continue.\n");
 			__builtin_trap();
 			return serr(ENOSYS);
 	}

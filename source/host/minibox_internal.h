@@ -204,4 +204,11 @@ mb_sword mb_fs_truncate_fd(mb_fs *fs, int fd, mb_sword size);
 mb_prot mb_page_native_prot(const mb_page *p);
 void    mb_page_maybe_snapshot(mb_page *p, uintptr_t mirror_addr);
 
+/* ---- diagnostics (diag.c) ----
+ * For the last words of a dying sandbox. Goes to stderr AND to a file, because a
+ * host loaded into a GUI process has no stderr and "it vanished" is not a bug
+ * report. Fatal paths only: no file is written during a healthy run. */
+void    mb_diag(const char *fmt, ...);
+void    mb_diag_banner(const char *what);
+
 #endif

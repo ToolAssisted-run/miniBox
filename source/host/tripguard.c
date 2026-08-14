@@ -103,7 +103,8 @@ static LONG CALLBACK veh(EXCEPTION_POINTERS *ep) {
 		mb_block *owner = NULL;
 		for (int i = 0; i < g_nblocks; i++)
 			if (mb_range_contains(g_blocks[i]->addr, fault)) { owner = g_blocks[i]; break; }
-		fprintf(stderr, "[veh] unhandled fault: addr=%p access=%s rip=%p, %s",
+		mb_diag_banner("unhandled fault");
+		mb_diag("[veh] unhandled fault: addr=%p access=%s rip=%p, %s",
 		        (void *)fault,
 		        ep->ExceptionRecord->ExceptionInformation[0] == 0 ? "read"
 		          : ep->ExceptionRecord->ExceptionInformation[0] == 1 ? "write" : "execute",
@@ -111,11 +112,10 @@ static LONG CALLBACK veh(EXCEPTION_POINTERS *ep) {
 		        owner ? "inside a registered block" : "OUTSIDE every registered block");
 		if (owner) {
 			size_t pi = (fault - owner->addr.start) >> MB_PAGESHIFT;
-			fprintf(stderr, " (page %zu status=%u dirty=%u invisible=%u)",
+			mb_diag(" (page %zu status=%u dirty=%u invisible=%u)",
 			        pi, owner->pages[pi].status, owner->pages[pi].dirty, owner->pages[pi].invisible);
 		}
-		fprintf(stderr, " [%d block(s) registered]\n", g_nblocks);
-		fflush(stderr);
+		mb_diag(" [%d block(s) registered]\n", g_nblocks);
 	}
 	return EXCEPTION_CONTINUE_SEARCH;
 }

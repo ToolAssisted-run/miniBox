@@ -11,6 +11,7 @@ minibox_host_inc = include_directories('.')
 minibox_host_sources = files(
   'sha256.c',
   'memblock.c',
+  'diag.c',
   'tripguard.c',
   'interop_bin.c',
   'context.c',
